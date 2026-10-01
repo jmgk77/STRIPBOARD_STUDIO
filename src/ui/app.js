@@ -24,6 +24,7 @@ export class App {
     this.showNames = true;
     this.selectedNet = null;
     this.selectedWire = null;
+    this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true };
     this.issues = [];
     this.history = [];
     this.redoStack = [];
@@ -50,6 +51,7 @@ export class App {
       showNames: this.showNames,
       selectedNet: this.selectedNet,
       selectedWire: this.selectedWire,
+      layers: this.layers,
       issues: this.issues,
     });
     this._renderPalette();
@@ -494,6 +496,13 @@ export class App {
       this.showNames = e.target.checked;
       this.render();
     });
+    const layerIds = { "lc-parts": "parts", "lc-wires": "wires", "lc-cuts": "cuts", "lc-copper": "copper", "lc-nets": "nets" };
+    for (const [id, key] of Object.entries(layerIds)) {
+      document.getElementById(id).addEventListener("change", (e) => {
+        this.layers[key] = e.target.checked;
+        this.render();
+      });
+    }
     document.getElementById("file").addEventListener("change", (e) => {
       if (e.target.files[0]) this.open(e.target.files[0]);
     });

@@ -48,6 +48,7 @@ export function render(svg, state) {
   const { project, library, view, selected, pending, solved, showNames = true } = state;
   const selectedNet = state.selectedNet ?? null;
   const selectedWire = state.selectedWire ?? null;
+  const L = state.layers ?? { parts: true, wires: true, cuts: true, copper: true, nets: true };
   const { sx, sy } = makeMapper(state);
   const { cols, rows } = project;
   const width = cols * CELL + PAD * 2;
@@ -75,7 +76,7 @@ export function render(svg, state) {
   // copper strips, split by cuts, tinted by the net they carry (so a same-row connection
   // is visible as copper in the net's colour -- no jumper is needed there).
   const stripOpacity = view === "copper" ? 0.95 : 0.42;
-  for (let y = 1; y <= rows; y++) {
+  for (let y = 1; L.copper !== false && y <= rows; y++) {
     for (const [a, b] of runsForRow(project, y)) {
       const nets = new Set();
       for (let x = a; x <= b; x++) {
@@ -105,10 +106,10 @@ export function render(svg, state) {
   }
 
   // ratsnest (intended wiring) only while unsolved
-  if (!solved) drawRatsnest(svg, state, sx, sy, colors);
+  if (!solved && L.nets !== false) drawRatsnest(svg, state, sx, sy, colors);
 
   // jumpers (clickable/draggable)
-  project.jumpers.forEach((j, i) => {
+  (L.wires === false ? [] : project.jumpers).forEach((j, i) => {
     const x = sx(j.x);
     const y1 = sy(j.ya);
     const y2 = sy(j.yb);
@@ -123,14 +124,16 @@ export function render(svg, state) {
   });
 
   // components
-  for (const comp of project.components.values()) {
-    const part = library.get(comp.part);
-    if (!part) continue;
-    drawComponent(svg, comp, part, state, sx, sy);
+  if (L.parts !== false) {
+    for (const comp of project.components.values()) {
+      const part = library.get(comp.part);
+      if (!part) continue;
+      drawComponent(svg, comp, part, state, sx, sy);
+    }
   }
 
   // cuts on top (clickable/draggable)
-  for (const c of project.cuts) {
+  for (const c of L.cuts === false ? [] : project.cuts) {
     const [x, y] = c.split(",").map(Number);
     const cx = sx(x);
     const cy = sy(y);
@@ -212,7 +215,8 @@ function drawComponent(svg, comp, part, state, sx, sy) {
   const g = el("g", { "data-ref": comp.ref, class: "component" }, svg);
   el("rect", {
     x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0, rx: 5,
-    fill: "#f0efe9", stroke: comp.locked ? "#b03ca0" : (selected === comp.ref ? "#ffcc33" : "#202020"),
+    fill: "#f0efe9", "fill-opacity": 0.5,
+    stroke: comp.locked ? "#b03ca0" : (selected === comp.ref ? "#ffcc33" : "#202020"),
     "stroke-width": selected === comp.ref ? 2.5 : 1.6,
   }, g);
 
