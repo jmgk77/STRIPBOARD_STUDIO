@@ -7,6 +7,7 @@ import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
 import { optimize as optimizeLayout, COMPACT_WEIGHTS } from "../core/optimize.js";
 import { contentBounds } from "../core/geometry.js";
+import { toAscii } from "../core/ascii.js";
 import { render, CELL, PAD } from "./scene.js";
 
 const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q" };
@@ -355,6 +356,12 @@ export class App {
     this._status(`board trimmed to ${this.project.cols} x ${this.project.rows}`);
   }
 
+  showAscii() {
+    const text = toAscii(this.project, LIBRARY);
+    document.getElementById("asciiText").textContent = text;
+    document.getElementById("asciiDlg").showModal();
+  }
+
   setView(copper) {
     this.view = copper ? "copper" : "front";
     this.render();
@@ -422,6 +429,15 @@ export class App {
     on("optimize", () => this.optimize());
     on("compact", () => this.compact());
     on("trim", () => this.trim());
+    on("ascii", () => this.showAscii());
+    document.getElementById("asciiClose").addEventListener("click", () =>
+      document.getElementById("asciiDlg").close(),
+    );
+    document.getElementById("asciiCopy").addEventListener("click", () => {
+      const text = document.getElementById("asciiText").textContent;
+      navigator.clipboard?.writeText(text);
+      this._status("board text copied to clipboard");
+    });
     on("connect", () => this.setMode(this.mode === "connect" ? "select" : "connect"));
     document.getElementById("names").addEventListener("change", (e) => {
       this.showNames = e.target.checked;

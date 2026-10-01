@@ -28,6 +28,7 @@
     <button id="optimize">Optimize</button>
     <button id="compact">Compact</button>
     <button id="trim">Trim board</button>
+    <button id="ascii">Text</button>
     <label class="check"><input type="checkbox" id="copper"> copper side</label>
     <label class="check"><input type="checkbox" id="names" checked> pin names</label>
     <span id="status" class="status"></span>
@@ -45,6 +46,15 @@
     </aside>
   </main>
   <input type="file" id="file" accept=".json,application/json" hidden>
+  <dialog id="asciiDlg">
+    <div class="dlgbar">
+      <strong>Board as text</strong>
+      <span class="grow"></span>
+      <button id="asciiCopy">Copy</button>
+      <button id="asciiClose">Close</button>
+    </div>
+    <pre id="asciiText"></pre>
+  </dialog>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>
