@@ -268,30 +268,38 @@ export class App {
   // -- solve --------------------------------------------------------------------
 
   solve() {
-    const result = route(this.project, LIBRARY);
-    this.snapshot();
-    this.project.cuts = result.cuts;
-    this.project.jumpers = result.jumpers;
-    this.solved = true;
-    const analysis = analyze(this.project, LIBRARY);
-    this.issues = [...result.diagnostics, ...analysis.issues];
-    this.render();
-    const errors = this.issues.filter((i) => i.level === "error").length;
-    this._status(errors ? `solved with ${errors} problem(s)` : `solved: ${result.jumpers.length} jumper(s), ${result.cuts.size} cut(s)`);
+    this._runBusy("Solving…", () => {
+      const result = route(this.project, LIBRARY);
+      this.snapshot();
+      this.project.cuts = result.cuts;
+      this.project.jumpers = result.jumpers;
+      this.solved = true;
+      const analysis = analyze(this.project, LIBRARY);
+      this.issues = [...result.diagnostics, ...analysis.issues];
+      this.render();
+      const errors = this.issues.filter((i) => i.level === "error").length;
+      this._status(
+        errors
+          ? `solved with ${errors} problem(s)`
+          : `solved: ${result.jumpers.length} jumper(s), ${result.cuts.size} cut(s)`,
+      );
+    });
   }
 
   optimize() {
-    this.snapshot();
-    const info = optimizeLayout(this.project, LIBRARY);
-    const result = route(this.project, LIBRARY);
-    this.project.cuts = result.cuts;
-    this.project.jumpers = result.jumpers;
-    this.solved = true;
-    this._recomputeIssues();
-    this.render();
-    this._status(
-      `optimized ${info.components} free part(s): cost ${info.startScore} -> ${info.score} (${info.evaluations} evals)`,
-    );
+    this._runBusy("Optimizing…", () => {
+      this.snapshot();
+      const info = optimizeLayout(this.project, LIBRARY);
+      const result = route(this.project, LIBRARY);
+      this.project.cuts = result.cuts;
+      this.project.jumpers = result.jumpers;
+      this.solved = true;
+      this._recomputeIssues();
+      this.render();
+      this._status(
+        `optimized ${info.components} free part(s): cost ${info.startScore} -> ${info.score} (${info.evaluations} evals)`,
+      );
+    });
   }
 
   setView(copper) {
@@ -458,6 +466,23 @@ export class App {
 
   _status(msg) {
     document.title = `Stripboard Planner — ${msg}`;
+    const el = document.getElementById("status");
+    if (el) el.textContent = msg;
+  }
+
+  /** Run a heavy synchronous task with a visible "busy" state painted first. */
+  _runBusy(msg, fn) {
+    this._status(msg);
+    document.body.classList.add("busy");
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        try {
+          fn();
+        } finally {
+          document.body.classList.remove("busy");
+        }
+      }),
+    );
   }
 }
 

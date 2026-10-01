@@ -110,8 +110,9 @@ export function render(svg, state) {
     const y1 = sy(j.ya);
     const y2 = sy(j.yb);
     el("line", { x1: x, y1, x2: x, y2, stroke: "#4c9aff", "stroke-width": 3, "stroke-linecap": "round" }, svg);
-    el("circle", { cx: x, cy: y1, r: 3.5, fill: "#4c9aff" }, svg);
-    el("circle", { cx: x, cy: y2, r: 3.5, fill: "#4c9aff" }, svg);
+    for (const cy of [y1, y2]) {
+      el("circle", { cx: x, cy, r: 6, fill: "#4c9aff", stroke: "#0b2b52", "stroke-width": 1.5 }, svg);
+    }
   }
 
   // components
@@ -205,18 +206,30 @@ function drawGlyph(g, part, pts) {
   const stroke = { stroke: "#202020", "stroke-width": 1.6, fill: "none" };
   const kind = part.kind;
   if (kind === "resistor" && pts.length >= 2) {
-    const [a, b] = [pts[0], pts[1]].sort((p, q) => p.Y - q.Y);
-    const x = a.X;
-    const y0 = a.Y + (b.Y - a.Y) * 0.3;
-    const y1 = a.Y + (b.Y - a.Y) * 0.7;
+    // Draw along the axis between the two pins, so it works vertically AND horizontally.
+    const [a, b] = pts;
+    const dx = b.X - a.X;
+    const dy = b.Y - a.Y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const px = -uy;
+    const py = ux;
+    const x0 = a.X + ux * len * 0.3;
+    const y0 = a.Y + uy * len * 0.3;
+    const x1 = a.X + ux * len * 0.7;
+    const y1 = a.Y + uy * len * 0.7;
     const n = 6;
     const amp = 5;
-    let d = `M ${x} ${a.Y} L ${x} ${y0}`;
+    let d = `M ${a.X} ${a.Y} L ${x0} ${y0}`;
     for (let i = 0; i < n; i++) {
-      const yy = y0 + ((y1 - y0) / n) * (i + 0.5);
-      d += ` L ${x + (i % 2 === 0 ? amp : -amp)} ${yy}`;
+      const t = (i + 0.5) / n;
+      const cx = x0 + (x1 - x0) * t;
+      const cy = y0 + (y1 - y0) * t;
+      const off = i % 2 === 0 ? amp : -amp;
+      d += ` L ${cx + px * off} ${cy + py * off}`;
     }
-    d += ` L ${x} ${y1} L ${x} ${b.Y}`;
+    d += ` L ${x1} ${y1} L ${b.X} ${b.Y}`;
     el("path", { d, ...stroke }, g);
     return;
   }
