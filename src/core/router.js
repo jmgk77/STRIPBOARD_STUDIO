@@ -158,20 +158,21 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
       return endCache.get(x);
     };
     for (const s of sources) {
+      const [sx, sy] = s.split(",").map(Number);
       dist.set(s, 0);
-      heap.push(s, 0);
+      heap.push([s, sx, sy], 0);
     }
     while (heap.size) {
-      const [d, cell] = heap.pop();
+      const [d, item] = heap.pop();
+      const [cell, x, y] = item;
       if (d > (dist.get(cell) ?? Infinity)) continue;
-      const [x, y] = cell.split(",").map(Number);
       for (const nx of [x - 1, x + 1]) {
         if (nx < 1 || nx > cols || !stripUsable(net, nx, y)) continue;
         const nc = cellId(nx, y);
         if (d + 1 < (dist.get(nc) ?? Infinity)) {
           dist.set(nc, d + 1);
           prev.set(nc, { from: cell, kind: "h" });
-          heap.push(nc, d + 1);
+          heap.push([nc, nx, y], d + 1);
         }
       }
       const blk = blocked(x);
@@ -185,7 +186,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
         if (d + cost < (dist.get(nc) ?? Infinity)) {
           dist.set(nc, d + cost);
           prev.set(nc, { from: cell, kind: "j" });
-          heap.push(nc, d + cost);
+          heap.push([nc, x, ny], d + cost);
         }
       }
     }

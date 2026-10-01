@@ -316,7 +316,7 @@ export class App {
 
   compact() {
     // Spread/wire/span weigh heavily, so parts are pulled together and leads shortened.
-    this._optimize(COMPACT_WEIGHTS, "Compacting…", "compacted", { maxPasses: 12, maxEvaluations: 1500 });
+    this._optimize(COMPACT_WEIGHTS, "Compacting…", "compacted", { maxPasses: 5, maxEvaluations: 120 });
   }
 
   _optimize(weights, busyMsg, verb, opts = {}) {
