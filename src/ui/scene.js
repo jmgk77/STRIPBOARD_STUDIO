@@ -57,9 +57,30 @@ export function render(svg, state) {
 
   el("rect", { x: PAD - CELL / 2, y: PAD - CELL / 2, width: cols * CELL, height: rows * CELL, rx: 4, fill: "#0f5132", stroke: "#062d1c", "stroke-width": 2 }, svg);
 
-  // copper strips split by cuts
+  const colors = new Map(project.nets.map((n, i) => [n.id, NET_COLORS[i % NET_COLORS.length]]));
+  const pinNet = new Map(); // "x,y" -> net id (pins that belong to a net)
+  for (const net of project.nets) {
+    for (const key of net.pins) {
+      const { ref, pin } = splitPin(key);
+      const comp = project.components.get(ref);
+      const part = comp && library.get(comp.part);
+      if (!part) continue;
+      const p = componentPins(comp, part).find((q) => q.id === pin);
+      if (p) pinNet.set(cellId(p.x, p.y), net.id);
+    }
+  }
+
+  // copper strips, split by cuts, tinted by the net they carry (so a same-row connection
+  // is visible as copper in the net's colour -- no jumper is needed there).
+  const stripOpacity = view === "copper" ? 0.95 : 0.42;
   for (let y = 1; y <= rows; y++) {
     for (const [a, b] of runsForRow(project, y)) {
+      const nets = new Set();
+      for (let x = a; x <= b; x++) {
+        const id = pinNet.get(cellId(x, y));
+        if (id) nets.add(id);
+      }
+      const fill = nets.size === 1 ? colors.get([...nets][0]) : "#c48a3e";
       const x1 = sx(a);
       const x2 = sx(b);
       el("rect", {
@@ -67,8 +88,8 @@ export function render(svg, state) {
         y: sy(y) - CELL / 2,
         width: Math.abs(x1 - x2) + CELL,
         height: CELL,
-        fill: "#c48a3e",
-        opacity: view === "copper" ? 0.95 : 0.5,
+        fill,
+        opacity: stripOpacity,
       }, svg);
     }
   }
@@ -81,7 +102,7 @@ export function render(svg, state) {
   }
 
   // ratsnest (intended wiring) only while unsolved
-  if (!solved) drawRatsnest(svg, state, sx, sy);
+  if (!solved) drawRatsnest(svg, state, sx, sy, colors);
 
   // jumpers
   for (const j of project.jumpers) {
@@ -115,9 +136,8 @@ export function render(svg, state) {
   }
 }
 
-function drawRatsnest(svg, state, sx, sy) {
+function drawRatsnest(svg, state, sx, sy, colors) {
   const { project, library } = state;
-  const colors = new Map([...project.nets].map((n, i) => [n.id, NET_COLORS[i % NET_COLORS.length]]));
   for (const net of project.nets) {
     const pts = [];
     for (const key of net.pins) {

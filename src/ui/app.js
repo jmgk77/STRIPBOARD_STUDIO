@@ -341,6 +341,11 @@ export class App {
       const ref = compEl.dataset.ref;
       this.selected = ref;
       const comp = this.project.components.get(ref);
+      if (comp.locked) {
+        // locked = fixed: select it, but do not drag it
+        this.render();
+        return;
+      }
       this.drag = {
         ref,
         start: this._cellAt(evt),
