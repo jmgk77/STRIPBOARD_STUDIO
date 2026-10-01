@@ -22,11 +22,15 @@ test("router bridges two nets across rows with jumpers and cuts", () => {
   assert.equal(r.ok, true, JSON.stringify(r.issues));
 });
 
-test("router reports adjacent different nets that cannot be cut", () => {
+test("router leaves two different nets on adjacent holes as a short (cannot be cut)", () => {
   const p = new Project({ cols: 12, rows: 6 });
   p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // (2,2)
   p.addComponent(new Component({ ref: "J2", part: "header2", x: 3, y: 2 })); // (3,2)
   p.nets = [new Net("A", [pinKey("J1", "1")]), new Net("B", [pinKey("J2", "1")])];
   const result = route(p, LIBRARY);
-  assert.ok(result.diagnostics.some((d) => d.code === "adjacent-nets"));
+  p.cuts = result.cuts;
+  p.jumpers = result.jumpers;
+  const r = analyze(p, LIBRARY);
+  assert.equal(r.ok, false);
+  assert.ok(r.shorts.length >= 1);
 });
