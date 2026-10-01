@@ -69,11 +69,14 @@ export function route(project, library, { maxAttempts = Infinity } = {}) {
     }
   }
 
+  const fixedCuts = project.fixedCuts ?? new Set();
+  const fixedJumpers = (project.jumpers ?? []).filter((j) => j.fixed && j.net);
+
   let best = null;
   let tried = 0;
   for (const order of orderings([...pinsByNet.keys()], pinsByNet)) {
     if (tried++ >= maxAttempts) break;
-    const attempt = runAttempt(project, library, order, pinAt, pinsByNet);
+    const attempt = runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts, fixedJumpers);
     if (best === null || attempt.score < best.score) best = attempt;
     if (best.errors === 0) break; // a valid result; good enough
   }
@@ -83,7 +86,7 @@ export function route(project, library, { maxAttempts = Infinity } = {}) {
 
 // -- one routing attempt ------------------------------------------------------
 
-function runAttempt(project, library, order, pinAt, pinsByNet) {
+function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new Set(), fixedJumpers = []) {
   const { cols, rows } = project;
   const owner = new Map(); // cell -> net id (copper)
   const arc = new Map(); // cell -> net id (jumper clearance)
@@ -102,6 +105,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
   const stripUsable = (net, x, y) => {
     if (x < 1 || x > cols || y < 1 || y > rows) return false;
     const c = cellId(x, y);
+    if (fixedCuts.has(c)) return false; // a user cut breaks the copper here
     if (pinAt.has(c) && pinAt.get(c) !== net) return false;
     if (owner.has(c) && owner.get(c) !== net) return false;
     for (const nx of [x - 1, x + 1]) {
@@ -142,10 +146,33 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
     return a < sorted.length && sorted[a] <= hi;
   };
 
+  // Seed the user's fixed jumpers: conductors of their net. They join their two holes for
+  // free (a zero-cost edge in the search) and reserve their span for everything else.
+  const extra = new Map(); // net -> [{x,y}] endpoints that must be reached
+  const fixedEdges = new Map(); // net -> Map(cell -> the other endpoint cell)
+  for (const j of fixedJumpers) {
+    const c1 = cellId(j.x, j.ya);
+    const c2 = cellId(j.x, j.yb);
+    owner.set(c1, j.net);
+    owner.set(c2, j.net);
+    jumperEnds.add(c1);
+    jumperEnds.add(c2);
+    for (let y = j.ya + 1; y < j.yb; y++) arc.set(cellId(j.x, y), j.net);
+    jumpers.push({ x: j.x, ya: j.ya, yb: j.yb, net: j.net, fixed: true });
+    const list = extra.get(j.net) ?? [];
+    list.push({ x: j.x, y: j.ya }, { x: j.x, y: j.yb });
+    extra.set(j.net, list);
+    const edges = fixedEdges.get(j.net) ?? new Map();
+    edges.set(c1, c2);
+    edges.set(c2, c1);
+    fixedEdges.set(j.net, edges);
+  }
+
   function dijkstra(net, sources) {
     const dist = new Map();
     const prev = new Map();
     const heap = new MinHeap();
+    const fixedEdge = fixedEdges.get(net);
     const blockedCache = new Map();
     const endCache = new Map();
     const blocked = (x) => {
@@ -192,6 +219,14 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
           heap.push([nc, x, ny], d + cost);
         }
       }
+      // A fixed jumper joins its two holes at no cost (it is already soldered).
+      const other = fixedEdge?.get(cell);
+      if (other && d < (dist.get(other) ?? Infinity)) {
+        const [ox, oy] = other.split(",").map(Number);
+        dist.set(other, d);
+        prev.set(other, { from: cell, kind: "f" });
+        heap.push([other, ox, oy], d);
+      }
     }
     return { dist, prev };
   }
@@ -219,7 +254,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
         const lo = Math.min(y1, y2);
         const hi = Math.max(y1, y2);
         if (!jumpers.some((j) => j.x === x1 && j.ya === lo && j.yb === hi)) {
-          jumpers.push({ x: x1, ya: lo, yb: hi });
+          jumpers.push({ x: x1, ya: lo, yb: hi, net, fixed: false });
           jumperEnds.add(cellId(x1, lo));
           jumperEnds.add(cellId(x1, hi));
           for (let y = lo + 1; y < hi; y++) arc.set(cellId(x1, y), net);
@@ -229,11 +264,24 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
   }
 
   for (const net of order) {
-    const terminals = pinsByNet.get(net) ?? [];
+    const pins = pinsByNet.get(net) ?? [];
+    const extraEnds = extra.get(net) ?? [];
+    const terminals = [...pins, ...extraEnds];
     if (terminals.length < 2) continue;
     for (const t of terminals) owner.set(cellId(t.x, t.y), net);
-    let connected = [cellId(terminals[0].x, terminals[0].y)];
-    const pending = terminals.slice(1);
+    // Start from the first pin PLUS the fixed jumper ends: those ends are already wired
+    // together by the user's jumper, so the router must not bridge them again.
+    let connected = [];
+    const seen = new Set();
+    const add = (t) => {
+      const c = cellId(t.x, t.y);
+      if (!seen.has(c)) {
+        seen.add(c);
+        connected.push(c);
+      }
+    };
+    add(pins[0] ?? terminals[0]);
+    const pending = terminals.filter((t) => !seen.has(cellId(t.x, t.y)));
     while (pending.length) {
       const { dist, prev } = dijkstra(net, connected);
       let bestIdx = -1;
@@ -257,6 +305,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
   }
 
   const cuts = deriveCuts(project, owner, pinAt, diagnostics);
+  for (const c of fixedCuts) cuts.add(c); // keep the user's cuts
   const clone = Project.fromJSON(project.toJSON());
   clone.cuts = cuts;
   clone.jumpers = jumpers;

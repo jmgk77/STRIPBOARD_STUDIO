@@ -46,6 +46,8 @@ export function makeMapper(state) {
 
 export function render(svg, state) {
   const { project, library, view, selected, pending, solved, showNames = true } = state;
+  const selectedNet = state.selectedNet ?? null;
+  const selectedWire = state.selectedWire ?? null;
   const { sx, sy } = makeMapper(state);
   const { cols, rows } = project;
   const width = cols * CELL + PAD * 2;
@@ -81,6 +83,7 @@ export function render(svg, state) {
         if (id) nets.add(id);
       }
       const fill = nets.size === 1 ? colors.get([...nets][0]) : "#c48a3e";
+      const lit = selectedNet && nets.has(selectedNet);
       const x1 = sx(a);
       const x2 = sx(b);
       el("rect", {
@@ -89,7 +92,7 @@ export function render(svg, state) {
         width: Math.abs(x1 - x2) + CELL,
         height: CELL,
         fill,
-        opacity: stripOpacity,
+        opacity: lit ? 0.85 : stripOpacity,
       }, svg);
     }
   }
@@ -104,16 +107,20 @@ export function render(svg, state) {
   // ratsnest (intended wiring) only while unsolved
   if (!solved) drawRatsnest(svg, state, sx, sy, colors);
 
-  // jumpers
-  for (const j of project.jumpers) {
+  // jumpers (clickable/draggable)
+  project.jumpers.forEach((j, i) => {
     const x = sx(j.x);
     const y1 = sy(j.ya);
     const y2 = sy(j.yb);
-    el("line", { x1: x, y1, x2: x, y2, stroke: "#4c9aff", "stroke-width": 3, "stroke-linecap": "round" }, svg);
+    const sel = selectedWire?.kind === "jumper" && selectedWire.i === i;
+    const lit = sel || (selectedNet && j.net === selectedNet);
+    const g = el("g", { "data-wire": i, class: "wire" }, svg);
+    el("line", { x1: x, y1, x2: x, y2, stroke: "transparent", "stroke-width": 16 }, g);
+    el("line", { x1: x, y1, x2: x, y2, stroke: lit ? "#ffd54a" : "#4c9aff", "stroke-width": sel ? 4.5 : 3, "stroke-linecap": "round" }, g);
     for (const cy of [y1, y2]) {
-      el("circle", { cx: x, cy, r: 6, fill: "#4c9aff", stroke: "#0b2b52", "stroke-width": 1.5 }, svg);
+      el("circle", { cx: x, cy, r: 6, fill: lit ? "#ffd54a" : "#4c9aff", stroke: "#0b2b52", "stroke-width": 1.5 }, g);
     }
-  }
+  });
 
   // components
   for (const comp of project.components.values()) {
@@ -122,14 +129,17 @@ export function render(svg, state) {
     drawComponent(svg, comp, part, state, sx, sy);
   }
 
-  // cuts on top (red slash over the gap)
+  // cuts on top (clickable/draggable)
   for (const c of project.cuts) {
     const [x, y] = c.split(",").map(Number);
     const cx = sx(x);
     const cy = sy(y);
     const r = HOLE_R + 3;
-    el("line", { x1: cx - r, y1: cy - r, x2: cx + r, y2: cy + r, stroke: "#ff5555", "stroke-width": 2.5, "stroke-linecap": "round" }, svg);
-    el("line", { x1: cx - r, y1: cy + r, x2: cx + r, y2: cy - r, stroke: "#ff5555", "stroke-width": 2.5, "stroke-linecap": "round" }, svg);
+    const sel = selectedWire?.kind === "cut" && selectedWire.key === c;
+    const g = el("g", { "data-cut": c, class: "cut" }, svg);
+    el("rect", { x: cx - r - 5, y: cy - r - 5, width: 2 * (r + 5), height: 2 * (r + 5), fill: "transparent" }, g);
+    el("line", { x1: cx - r, y1: cy - r, x2: cx + r, y2: cy + r, stroke: sel ? "#ffd54a" : "#ff5555", "stroke-width": sel ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
+    el("line", { x1: cx - r, y1: cy + r, x2: cx + r, y2: cy - r, stroke: sel ? "#ffd54a" : "#ff5555", "stroke-width": sel ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
   }
 
   drawCutBorder(svg, state, sx, sy);
@@ -163,7 +173,10 @@ function drawCutBorder(svg, state, sx, sy) {
 
 function drawRatsnest(svg, state, sx, sy, colors) {
   const { project, library } = state;
+  const selectedNet = state.selectedNet ?? null;
   for (const net of project.nets) {
+    const sel = net.id === selectedNet;
+    const dim = selectedNet != null && !sel;
     const pts = [];
     for (const key of net.pins) {
       const { ref, pin } = splitPin(key);
@@ -177,7 +190,10 @@ function drawRatsnest(svg, state, sx, sy, colors) {
     for (let i = 1; i < pts.length; i++) {
       el("line", {
         x1: pts[0].x, y1: pts[0].y, x2: pts[i].x, y2: pts[i].y,
-        stroke: colors.get(net.id), "stroke-width": 1.6, "stroke-dasharray": "5 4", opacity: 0.7,
+        stroke: colors.get(net.id),
+        "stroke-width": sel ? 3.6 : 1.6,
+        "stroke-dasharray": sel ? "9 5" : "5 4",
+        opacity: sel ? 1 : dim ? 0.16 : 0.7,
       }, svg);
     }
   }

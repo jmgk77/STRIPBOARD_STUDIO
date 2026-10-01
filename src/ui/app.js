@@ -22,10 +22,13 @@ export class App {
     this.mode = "select";
     this.solved = false;
     this.showNames = true;
+    this.selectedNet = null;
+    this.selectedWire = null;
     this.issues = [];
     this.history = [];
     this.redoStack = [];
     this.drag = null;
+    this.wireDrag = null;
 
     this._bindToolbar();
     this._bindBoard();
@@ -45,6 +48,8 @@ export class App {
       mode: this.mode,
       solved: this.solved,
       showNames: this.showNames,
+      selectedNet: this.selectedNet,
+      selectedWire: this.selectedWire,
       issues: this.issues,
     });
     this._renderPalette();
@@ -74,9 +79,13 @@ export class App {
     }
     for (const net of this.project.nets) {
       const item = document.createElement("div");
-      item.className = "item";
+      item.className = "item" + (this.selectedNet === net.id ? " active" : "");
       const pins = [...net.pins].sort().map((k) => pinLabel(this.project, k)).join(", ");
       item.textContent = `${net.id} (${net.pins.size}): ${pins}`;
+      item.addEventListener("click", () => {
+        this.selectedNet = this.selectedNet === net.id ? null : net.id;
+        this.render();
+      });
       box.appendChild(item);
     }
   }
@@ -256,6 +265,18 @@ export class App {
   }
 
   deleteSelected() {
+    if (this.selectedWire) {
+      const w = this.selectedWire;
+      this.snapshot();
+      if (w.kind === "jumper") this.project.jumpers.splice(w.i, 1);
+      else {
+        this.project.cuts.delete(w.key);
+        this.project.fixedCuts.delete(w.key);
+      }
+      this.selectedWire = null;
+      this._afterStructuralChange(false);
+      return;
+    }
     if (!this.selected) return;
     this.snapshot();
     this.project.removeComponent(this.selected);
@@ -293,10 +314,14 @@ export class App {
 
   solve() {
     this._runBusy("Solving…", () => {
+      this.project.fixedCuts = this.project.fixedCuts ?? new Set();
       const result = route(this.project, LIBRARY);
       this.snapshot();
-      this.project.cuts = result.cuts;
-      this.project.jumpers = result.jumpers;
+      this.project.cuts = new Set(result.cuts);
+      this.project.jumpers = result.jumpers.map((j) => ({
+        x: j.x, ya: j.ya, yb: j.yb, net: j.net, fixed: !!j.fixed,
+      }));
+      this.selectedWire = null;
       this.solved = true;
       const analysis = analyze(this.project, LIBRARY);
       this.issues = [...result.diagnostics, ...analysis.issues];
@@ -495,14 +520,38 @@ export class App {
         this.handlePinClick(`${pinEl.dataset.ref}.${pinEl.dataset.pin}`);
         return;
       }
+      const wireEl = evt.target.closest("[data-wire]");
+      if (wireEl && this.mode === "select") {
+        const i = Number(wireEl.dataset.wire);
+        this.selected = null;
+        this.selectedNet = null;
+        this.selectedWire = { kind: "jumper", i };
+        this.wireDrag = { kind: "jumper", i, before: JSON.stringify(this.project.toJSON()) };
+        this.svg.setPointerCapture(evt.pointerId);
+        this.render();
+        return;
+      }
+      const cutEl = evt.target.closest("[data-cut]");
+      if (cutEl && this.mode === "select") {
+        const key = cutEl.dataset.cut;
+        this.selected = null;
+        this.selectedNet = null;
+        this.selectedWire = { kind: "cut", key };
+        this.wireDrag = { kind: "cut", key, before: JSON.stringify(this.project.toJSON()) };
+        this.svg.setPointerCapture(evt.pointerId);
+        this.render();
+        return;
+      }
       const compEl = evt.target.closest("[data-ref]");
       if (!compEl) {
         this.selected = null;
+        this.selectedWire = null;
         this.render();
         return;
       }
       const ref = compEl.dataset.ref;
       this.selected = ref;
+      this.selectedWire = null;
       const comp = this.project.components.get(ref);
       if (comp.locked) {
         // locked = fixed: select it, but do not drag it
@@ -521,6 +570,33 @@ export class App {
     });
 
     this.svg.addEventListener("pointermove", (evt) => {
+      if (this.wireDrag) {
+        const cell = this._cellAt(evt);
+        const x = Math.max(1, Math.min(this.project.cols, cell.x));
+        const y = Math.max(1, Math.min(this.project.rows, cell.y));
+        if (this.wireDrag.kind === "jumper") {
+          const j = this.project.jumpers[this.wireDrag.i];
+          if (j) {
+            if (Math.abs(y - j.ya) <= Math.abs(y - j.yb)) j.ya = y;
+            else j.yb = y;
+            j.x = x;
+            if (j.ya > j.yb) [j.ya, j.yb] = [j.yb, j.ya];
+            if (j.ya === j.yb) j.yb = Math.min(this.project.rows, j.ya + 1);
+            this.render();
+          }
+        } else {
+          const nk = `${x},${y}`;
+          if (nk !== this.wireDrag.key) {
+            this.project.cuts.delete(this.wireDrag.key);
+            this.project.fixedCuts.delete(this.wireDrag.key);
+            this.project.cuts.add(nk);
+            this.selectedWire = { kind: "cut", key: nk };
+            this.wireDrag.key = nk;
+            this.render();
+          }
+        }
+        return;
+      }
       if (!this.drag) return;
       const cell = this._cellAt(evt);
       const comp = this.project.components.get(this.drag.ref);
@@ -532,6 +608,19 @@ export class App {
     });
 
     this.svg.addEventListener("pointerup", () => {
+      if (this.wireDrag) {
+        const d = this.wireDrag;
+        this.wireDrag = null;
+        if (d.kind === "jumper") {
+          const j = this.project.jumpers[d.i];
+          if (j) j.fixed = true;
+        } else {
+          this.project.fixedCuts.add(d.key);
+        }
+        this.pushHistory(d.before);
+        this._afterStructuralChange(false);
+        return;
+      }
       if (!this.drag) return;
       const { ref, before, originX, originY } = this.drag;
       const comp = this.project.components.get(ref);
@@ -547,6 +636,8 @@ export class App {
       if (typing) return;
       if (evt.key === "Escape") {
         this.pending = null;
+        this.selectedWire = null;
+        this.selectedNet = null;
         this.render();
       } else if (evt.key.toLowerCase() === "r") {
         this.rotateSelected();

@@ -59,7 +59,8 @@ export class Project {
     this.components = new Map(); // ref -> Component
     this.nets = []; // Net[]
     this.cuts = new Set(); // "x,y" cells where the copper is broken
-    this.jumpers = []; // { x, ya, yb }
+    this.fixedCuts = new Set(); // the subset the user pinned; Solve keeps these
+    this.jumpers = []; // { x, ya, yb, net?, fixed? }
   }
 
   addComponent(comp) {
@@ -120,6 +121,7 @@ export class Project {
       components: [...this.components.values()].map((c) => c.toJSON()),
       nets: this.nets.map((n) => n.toJSON()),
       cuts: [...this.cuts].sort(),
+      fixedCuts: [...this.fixedCuts].sort(),
       jumpers: this.jumpers.map((j) => ({ ...j })),
     };
   }
@@ -130,7 +132,13 @@ export class Project {
     for (const c of o.components ?? []) p.components.set(c.ref, new Component(c));
     p.nets = (o.nets ?? []).map((n) => new Net(n.id, n.pins ?? [], n.weight ?? 1));
     p.cuts = new Set(o.cuts ?? []);
-    p.jumpers = (o.jumpers ?? []).map((j) => ({ x: j.x, ya: j.ya, yb: j.yb }));
+    p.fixedCuts = new Set(o.fixedCuts ?? []);
+    p.jumpers = (o.jumpers ?? []).map((j) => {
+      const out = { x: j.x, ya: j.ya, yb: j.yb };
+      if (j.net) out.net = j.net;
+      if (j.fixed) out.fixed = true;
+      return out;
+    });
     return p;
   }
 }
