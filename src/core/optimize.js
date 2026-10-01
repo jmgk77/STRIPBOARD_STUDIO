@@ -1,23 +1,26 @@
 // Light optimizer: a greedy hill-climb over the UNLOCKED components. For each one it
-// tries its four rotations and a few small translations, keeps any move that lowers the
-// cost, and repeats. It is deliberately small -- "a little optimization" -- not a solver.
+// tries its rotations, a few small moves, and (for bendable two-lead parts) a few lead
+// spacings; it keeps any move that lowers the cost and repeats.
 //
-// Cost = hard errors first, then jumpers, then cuts. Errors come from the authoritative
-// analyzer on the routed board, so a move that creates a short/overlap is rejected.
+// Cost = hard errors first, then jumpers, then cuts, then board spread (so equal-wiring
+// arrangements get squeezed together). Errors come from the authoritative analyzer on the
+// routed board, so a move that creates a short or an overlap is rejected.
 
 import { analyze } from "./connectivity.js";
+import { contentBounds } from "./geometry.js";
 import { route } from "./router.js";
 
 const ROTS = [0, 90, 180, 270];
+const DEFAULT_WEIGHTS = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 4 };
 
 function signature(project) {
   return [...project.components.values()]
     .filter((c) => !c.locked)
-    .map((c) => `${c.ref}:${c.x},${c.y},${c.rot}`)
+    .map((c) => `${c.ref}:${c.x},${c.y},${c.rot},${c.span}`)
     .join("|");
 }
 
-function evaluate(project, library, cache) {
+function evaluate(project, library, cache, weights) {
   const key = signature(project);
   const hit = cache.get(key);
   if (hit) return hit;
@@ -28,17 +31,28 @@ function evaluate(project, library, cache) {
   const a = analyze(clone, library);
   const errors = a.issues.filter((i) => i.level === "error").length;
   const diagErrors = r.diagnostics.filter((d) => d.level === "error").length;
-  const score = errors * 1000 + diagErrors * 200 + r.jumpers.length * 10 + r.cuts.size * 3;
-  const val = { score, errors, jumpers: r.jumpers.length, cuts: r.cuts.size };
+  const b = contentBounds(clone, library);
+  const spread = b ? b.x1 - b.x0 + (b.y1 - b.y0) : 0;
+  const score =
+    errors * weights.errors +
+    diagErrors * weights.diag +
+    r.jumpers.length * weights.jumpers +
+    r.cuts.size * weights.cuts +
+    spread * weights.spread;
+  const val = { score, errors, jumpers: r.jumpers.length, cuts: r.cuts.size, spread };
   cache.set(key, val);
   return val;
 }
 
-export function optimize(project, library, { maxPasses = 3, radius = 1, maxEvaluations = 240 } = {}) {
+export function optimize(
+  project,
+  library,
+  { weights = DEFAULT_WEIGHTS, maxPasses = 4, radius = 1, maxEvaluations = 400 } = {},
+) {
   const cache = new Map();
   let evaluations = 0;
   const free = [...project.components.values()].filter((c) => !c.locked);
-  let best = evaluate(project, library, cache);
+  let best = evaluate(project, library, cache, weights);
   evaluations += 1;
   const startScore = best.score;
 
@@ -46,15 +60,24 @@ export function optimize(project, library, { maxPasses = 3, radius = 1, maxEvalu
     let improved = false;
     for (const comp of free) {
       if (evaluations >= maxEvaluations) break;
-      const base = { x: comp.x, y: comp.y, rot: comp.rot };
+      const part = library.get(comp.part);
+      const base = { x: comp.x, y: comp.y, rot: comp.rot, span: comp.span };
       const candidates = [];
-      for (const rot of ROTS) if (rot !== base.rot) candidates.push({ x: base.x, y: base.y, rot });
+      for (const rot of ROTS) if (rot !== base.rot) candidates.push({ ...base, rot });
       for (let dx = -radius; dx <= radius; dx++) {
         for (let dy = -radius; dy <= radius; dy++) {
-          if (dx === 0 && dy === 0) continue;
-          candidates.push({ x: base.x + dx, y: base.y + dy, rot: base.rot });
+          if (dx || dy) candidates.push({ ...base, x: base.x + dx, y: base.y + dy });
         }
       }
+      if (part?.bendable) {
+        const { min, max, default: def } = part.bendable;
+        const spans = new Set([min, def, base.span - 1, base.span + 1, max]);
+        for (const s of spans) {
+          const clamped = Math.max(min, Math.min(max, s));
+          if (clamped !== base.span) candidates.push({ ...base, span: clamped });
+        }
+      }
+
       let bestMove = null;
       let bestVal = best;
       for (const cand of candidates) {
@@ -62,7 +85,8 @@ export function optimize(project, library, { maxPasses = 3, radius = 1, maxEvalu
         comp.x = cand.x;
         comp.y = cand.y;
         comp.rot = cand.rot;
-        const val = evaluate(project, library, cache);
+        comp.span = cand.span;
+        const val = evaluate(project, library, cache, weights);
         evaluations += 1;
         if (val.score < bestVal.score) {
           bestVal = val;
@@ -73,16 +97,18 @@ export function optimize(project, library, { maxPasses = 3, radius = 1, maxEvalu
         comp.x = bestMove.x;
         comp.y = bestMove.y;
         comp.rot = bestMove.rot;
+        comp.span = bestMove.span;
         best = bestVal;
         improved = true;
       } else {
         comp.x = base.x;
         comp.y = base.y;
         comp.rot = base.rot;
+        comp.span = base.span;
       }
     }
     if (!improved) break;
   }
 
-  return { score: best.score, startScore, evaluations, components: free.length };
+  return { score: best.score, startScore, evaluations, components: free.length, spread: best.spread };
 }

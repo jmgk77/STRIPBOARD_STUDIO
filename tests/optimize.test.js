@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { Project, Component, Net, pinKey } from "../src/core/model.js";
 import { LIBRARY } from "../src/core/library.js";
 import { analyze } from "../src/core/connectivity.js";
+import { contentBounds } from "../src/core/geometry.js";
 import { optimize } from "../src/core/optimize.js";
 
 test("optimizer fixes an off-board rotated part", () => {
@@ -17,6 +18,19 @@ test("optimizer fixes an off-board rotated part", () => {
   const info = optimize(p, LIBRARY);
   assert.ok(info.score < info.startScore, "optimizer should improve the cost");
   assert.ok(!analyze(p, LIBRARY).issues.some((i) => i.code === "pin-off-board"));
+});
+
+test("compact pulls a free part toward a locked one", () => {
+  const p = new Project({ cols: 24, rows: 12 });
+  p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2, locked: true }));
+  p.addComponent(new Component({ ref: "J2", part: "header2", x: 18, y: 8, locked: false }));
+  p.nets = [new Net("A", [pinKey("J1", "1"), pinKey("J2", "1")])];
+  const b0 = contentBounds(p, LIBRARY);
+  const spread0 = b0.x1 - b0.x0 + (b0.y1 - b0.y0);
+  optimize(p, LIBRARY, { weights: { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 20 } });
+  const b1 = contentBounds(p, LIBRARY);
+  const spread1 = b1.x1 - b1.x0 + (b1.y1 - b1.y0);
+  assert.ok(spread1 < spread0, `spread ${spread0} -> ${spread1}`);
 });
 
 test("optimizer never moves a locked part", () => {

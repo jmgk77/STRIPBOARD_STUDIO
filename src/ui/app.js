@@ -6,6 +6,7 @@ import { LIBRARY, listParts } from "../core/library.js";
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
 import { optimize as optimizeLayout } from "../core/optimize.js";
+import { contentBounds } from "../core/geometry.js";
 import { render, CELL, PAD } from "./scene.js";
 
 const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q" };
@@ -111,6 +112,28 @@ export class App {
     const lock = comp.locked ? "locked" : "free";
     head.textContent = `${comp.ref} — ${part?.label ?? comp.part} — rot ${comp.rot}° — ${lock}`;
     box.appendChild(head);
+
+    if (part?.bendable) {
+      const row = document.createElement("div");
+      row.className = "pinrow";
+      const tag = document.createElement("span");
+      tag.className = "pintag";
+      tag.textContent = "span";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = String(part.bendable.min);
+      input.max = String(part.bendable.max);
+      input.value = String(comp.span || part.bendable.default);
+      input.addEventListener("change", () => {
+        this.snapshot();
+        const v = Number(input.value) || part.bendable.default;
+        comp.span = Math.max(part.bendable.min, Math.min(part.bendable.max, v));
+        this.render();
+      });
+      row.appendChild(tag);
+      row.appendChild(input);
+      box.appendChild(row);
+    }
 
     const hint = document.createElement("div");
     hint.className = "muted";
@@ -287,9 +310,21 @@ export class App {
   }
 
   optimize() {
-    this._runBusy("Optimizing…", () => {
+    this._optimize(null, "Optimizing…", "optimized");
+  }
+
+  compact() {
+    // Spread weighs heavily, so parts are pulled together; wiring still matters.
+    const weights = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 20 };
+    this._optimize(weights, "Compacting…", "compacted");
+  }
+
+  _optimize(weights, busyMsg, verb) {
+    this._runBusy(busyMsg, () => {
       this.snapshot();
-      const info = optimizeLayout(this.project, LIBRARY);
+      const info = weights
+        ? optimizeLayout(this.project, LIBRARY, { weights })
+        : optimizeLayout(this.project, LIBRARY);
       const result = route(this.project, LIBRARY);
       this.project.cuts = result.cuts;
       this.project.jumpers = result.jumpers;
@@ -297,9 +332,28 @@ export class App {
       this._recomputeIssues();
       this.render();
       this._status(
-        `optimized ${info.components} free part(s): cost ${info.startScore} -> ${info.score} (${info.evaluations} evals)`,
+        `${verb} ${info.components} free part(s): cost ${info.startScore} -> ${info.score} (spread ${info.spread})`,
       );
     });
+  }
+
+  trim() {
+    const b = contentBounds(this.project, LIBRARY);
+    if (!b) return;
+    this.snapshot();
+    const dx = 2 - b.x0; // leave a 1-hole margin
+    const dy = 2 - b.y0;
+    for (const c of this.project.components.values()) {
+      c.x += dx;
+      c.y += dy;
+    }
+    this.project.cols = b.x1 - b.x0 + 3;
+    this.project.rows = b.y1 - b.y0 + 3;
+    this.invalidateRouting();
+    document.getElementById("cols").value = this.project.cols;
+    document.getElementById("rows").value = this.project.rows;
+    this._afterStructuralChange(true);
+    this._status(`board trimmed to ${this.project.cols} x ${this.project.rows}`);
   }
 
   setView(copper) {
@@ -367,6 +421,8 @@ export class App {
     on("delete", () => this.deleteSelected());
     on("solve", () => this.solve());
     on("optimize", () => this.optimize());
+    on("compact", () => this.compact());
+    on("trim", () => this.trim());
     on("connect", () => this.setMode(this.mode === "connect" ? "select" : "connect"));
     document.getElementById("names").addEventListener("change", (e) => {
       this.showNames = e.target.checked;

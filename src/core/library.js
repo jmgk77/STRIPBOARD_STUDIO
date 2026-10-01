@@ -7,7 +7,16 @@
 // vertical columns `gap` apart.
 
 export class PartDef {
-  constructor({ name, label, kind = "generic", pins = [], body = null, rotatable = true, defaultValue = "" }) {
+  constructor({
+    name,
+    label,
+    kind = "generic",
+    pins = [],
+    body = null,
+    rotatable = true,
+    defaultValue = "",
+    bendable = null, // { min, max, default }: two-lead part whose span can be formed
+  }) {
     this.name = name;
     this.label = label;
     this.kind = kind;
@@ -15,6 +24,7 @@ export class PartDef {
     this.body = body; // { x, y, w, h } in local units, for drawing only
     this.rotatable = rotatable;
     this.defaultValue = defaultValue;
+    this.bendable = bendable;
     const ids = pins.map((p) => p.id);
     if (new Set(ids).size !== ids.length) throw new Error(`part ${name}: duplicate pin ids`);
   }
@@ -51,17 +61,27 @@ const labels = (prefix, count) => Array.from({ length: count }, (_, i) => `${pre
 
 // --- discretes ---------------------------------------------------------------
 
+// Two-lead parts are "bendable": their leads can be formed to different hole spacings,
+// so the instance carries a `span` between bendable.min and bendable.max (pin 2's row).
 register(new PartDef({
   name: "resistor", label: "Resistor", kind: "resistor", defaultValue: "10k",
   pins: [{ id: "1", x: 0, y: 0 }, { id: "2", x: 0, y: 3 }],
+  bendable: { min: 2, max: 12, default: 3 },
+}));
+register(new PartDef({
+  name: "capacitor", label: "Capacitor", kind: "capacitor", defaultValue: "100n",
+  pins: [{ id: "1", x: 0, y: 0 }, { id: "2", x: 0, y: 2 }],
+  bendable: { min: 2, max: 10, default: 2 },
 }));
 register(new PartDef({
   name: "led", label: "LED", kind: "led",
   pins: [{ id: "A", x: 0, y: 0 }, { id: "K", x: 0, y: 2 }],
+  bendable: { min: 2, max: 8, default: 2 },
 }));
 register(new PartDef({
   name: "diode", label: "Diode", kind: "diode", defaultValue: "1N4148",
   pins: [{ id: "A", x: 0, y: 0 }, { id: "K", x: 0, y: 2 }],
+  bendable: { min: 2, max: 8, default: 2 },
 }));
 register(new PartDef({
   name: "transistor", label: "Transistor (TO-92)", kind: "transistor", defaultValue: "2N3904",

@@ -1,7 +1,7 @@
 // SVG rendering of the board. Pure draw: it builds the SVG DOM from a state object and
 // sets data attributes for event delegation. No application state lives here.
 
-import { componentPins } from "../core/geometry.js";
+import { componentPins, contentBounds } from "../core/geometry.js";
 import { cellId } from "../core/connectivity.js";
 import { splitPin } from "../core/model.js";
 
@@ -132,9 +132,33 @@ export function render(svg, state) {
     el("line", { x1: cx - r, y1: cy + r, x2: cx + r, y2: cy - r, stroke: "#ff5555", "stroke-width": 2.5, "stroke-linecap": "round" }, svg);
   }
 
+  drawCutBorder(svg, state, sx, sy);
+
   if (view === "copper") {
     el("text", { x: width / 2, y: 22, "text-anchor": "middle", fill: "#ff6b6b", "font-size": 18, "font-weight": 700 }, svg).textContent = "COPPER SIDE (mirrored)";
   }
+}
+
+// A dashed outline around everything the board uses: where you can cut a virgin board.
+function drawCutBorder(svg, state, sx, sy) {
+  const { project, library } = state;
+  const b = contentBounds(project, library);
+  if (!b) return;
+  const xa = sx(b.x0) - CELL / 2;
+  const xb = sx(b.x1) + CELL / 2;
+  const y0 = sy(b.y0) - CELL / 2;
+  const y1 = sy(b.y1) + CELL / 2;
+  const x = Math.min(xa, xb);
+  const w = Math.abs(xb - xa);
+  el("rect", {
+    x, y: y0, width: w, height: y1 - y0, rx: 4, fill: "none",
+    stroke: "#ffd54a", "stroke-width": 2, "stroke-dasharray": "9 5",
+  }, svg);
+  const cols = b.x1 - b.x0 + 1;
+  const rows = b.y1 - b.y0 + 1;
+  el("text", {
+    x: x + w / 2, y: y0 - 7, "text-anchor": "middle", fill: "#ffd54a", "font-size": 11, "font-weight": 600,
+  }, svg).textContent = `cut board: ${cols} x ${rows} holes`;
 }
 
 function drawRatsnest(svg, state, sx, sy, colors) {
@@ -231,6 +255,26 @@ function drawGlyph(g, part, pts) {
     }
     d += ` L ${x1} ${y1} L ${b.X} ${b.Y}`;
     el("path", { d, ...stroke }, g);
+    return;
+  }
+  if (kind === "capacitor" && pts.length >= 2) {
+    const [a, b] = pts;
+    const dx = b.X - a.X;
+    const dy = b.Y - a.Y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const px = -uy;
+    const py = ux;
+    const mx = (a.X + b.X) / 2;
+    const my = (a.Y + b.Y) / 2;
+    const gap = 4;
+    const half = 8;
+    const seg = (x1, y1, x2, y2) => el("line", { x1, y1, x2, y2, ...stroke }, g);
+    seg(a.X, a.Y, mx - ux * gap, my - uy * gap);
+    seg(mx + ux * gap, my + uy * gap, b.X, b.Y);
+    seg(mx - ux * gap - px * half, my - uy * gap - py * half, mx - ux * gap + px * half, my - uy * gap + py * half);
+    seg(mx + ux * gap - px * half, my + uy * gap - py * half, mx + ux * gap + px * half, my + uy * gap + py * half);
     return;
   }
   if ((kind === "led" || kind === "diode") && pts.length >= 2) {
