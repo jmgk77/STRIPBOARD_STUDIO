@@ -5,7 +5,7 @@ import { Component, Project, pinLabel } from "../core/model.js";
 import { LIBRARY, listParts } from "../core/library.js";
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
-import { optimize as optimizeLayout } from "../core/optimize.js";
+import { optimize as optimizeLayout, COMPACT_WEIGHTS } from "../core/optimize.js";
 import { contentBounds } from "../core/geometry.js";
 import { render, CELL, PAD } from "./scene.js";
 
@@ -314,17 +314,16 @@ export class App {
   }
 
   compact() {
-    // Spread weighs heavily, so parts are pulled together; wiring still matters.
-    const weights = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 20 };
-    this._optimize(weights, "Compacting…", "compacted");
+    // Spread/wire/span weigh heavily, so parts are pulled together and leads shortened.
+    this._optimize(COMPACT_WEIGHTS, "Compacting…", "compacted", { maxPasses: 12, maxEvaluations: 1500 });
   }
 
-  _optimize(weights, busyMsg, verb) {
+  _optimize(weights, busyMsg, verb, opts = {}) {
     this._runBusy(busyMsg, () => {
       this.snapshot();
       const info = weights
-        ? optimizeLayout(this.project, LIBRARY, { weights })
-        : optimizeLayout(this.project, LIBRARY);
+        ? optimizeLayout(this.project, LIBRARY, { weights, ...opts })
+        : optimizeLayout(this.project, LIBRARY, opts);
       const result = route(this.project, LIBRARY);
       this.project.cuts = result.cuts;
       this.project.jumpers = result.jumpers;

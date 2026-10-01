@@ -7,11 +7,12 @@
 // routed board, so a move that creates a short or an overlap is rejected.
 
 import { analyze } from "./connectivity.js";
-import { contentBounds } from "./geometry.js";
+import { componentPins, contentBounds, resolveSpan, totalWirelength } from "./geometry.js";
 import { route } from "./router.js";
 
 const ROTS = [0, 90, 180, 270];
-const DEFAULT_WEIGHTS = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 4 };
+const DEFAULT_WEIGHTS = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 2, wire: 1, span: 1 };
+export const COMPACT_WEIGHTS = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 8, wire: 4, span: 3 };
 
 function signature(project) {
   return [...project.components.values()]
@@ -33,13 +34,21 @@ function evaluate(project, library, cache, weights) {
   const diagErrors = r.diagnostics.filter((d) => d.level === "error").length;
   const b = contentBounds(clone, library);
   const spread = b ? b.x1 - b.x0 + (b.y1 - b.y0) : 0;
+  const wire = totalWirelength(clone, library);
+  let spanSum = 0;
+  for (const c of clone.components.values()) {
+    const p = library.get(c.part);
+    if (p?.bendable) spanSum += resolveSpan(c, p);
+  }
   const score =
     errors * weights.errors +
     diagErrors * weights.diag +
     r.jumpers.length * weights.jumpers +
     r.cuts.size * weights.cuts +
-    spread * weights.spread;
-  const val = { score, errors, jumpers: r.jumpers.length, cuts: r.cuts.size, spread };
+    spread * weights.spread +
+    wire * weights.wire +
+    spanSum * weights.span;
+  const val = { score, errors, jumpers: r.jumpers.length, cuts: r.cuts.size, spread, wire, span: spanSum };
   cache.set(key, val);
   return val;
 }
@@ -47,8 +56,9 @@ function evaluate(project, library, cache, weights) {
 export function optimize(
   project,
   library,
-  { weights = DEFAULT_WEIGHTS, maxPasses = 4, radius = 1, maxEvaluations = 400 } = {},
+  { weights: overrides = {}, maxPasses = 6, maxEvaluations = 600 } = {},
 ) {
+  const weights = { ...DEFAULT_WEIGHTS, ...overrides };
   const cache = new Map();
   let evaluations = 0;
   const free = [...project.components.values()].filter((c) => !c.locked);
@@ -64,9 +74,31 @@ export function optimize(
       const base = { x: comp.x, y: comp.y, rot: comp.rot, span: comp.span };
       const candidates = [];
       for (const rot of ROTS) if (rot !== base.rot) candidates.push({ ...base, rot });
-      for (let dx = -radius; dx <= radius; dx++) {
-        for (let dy = -radius; dy <= radius; dy++) {
-          if (dx || dy) candidates.push({ ...base, x: base.x + dx, y: base.y + dy });
+      const offsets = weights.spread >= 6 ? [1, 2, 3, 5, 8, 13, 21] : [1, 2, 4];
+      for (const d of offsets) {
+        candidates.push({ ...base, x: base.x + d });
+        candidates.push({ ...base, x: base.x - d });
+        candidates.push({ ...base, y: base.y + d });
+        candidates.push({ ...base, y: base.y - d });
+      }
+      // Move toward the group's centroid: closes large gaps in one step.
+      const others = [...project.components.values()].filter((c) => c !== comp);
+      if (others.length) {
+        let sx = 0;
+        let sy = 0;
+        let n = 0;
+        for (const other of others) {
+          const op = library.get(other.part);
+          if (!op) continue;
+          for (const q of componentPins(other, op)) {
+            sx += q.x;
+            sy += q.y;
+            n += 1;
+          }
+        }
+        if (n) {
+          candidates.push({ ...base, x: Math.round(sx / n) });
+          candidates.push({ ...base, y: Math.round(sy / n) });
         }
       }
       if (part?.bendable) {

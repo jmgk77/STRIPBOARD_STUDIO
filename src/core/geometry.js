@@ -80,6 +80,33 @@ export function componentBounds(component, part) {
  * Bounding box of everything the board actually uses: component pins, cuts and jumper
  * ends. Null when nothing is placed. This is where you can cut a virgin stripboard.
  */
+/** Total half-perimeter wirelength of every net (a placement quality proxy). */
+export function totalWirelength(project, library) {
+  let total = 0;
+  for (const net of project.nets) {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const key of net.pins) {
+      const i = key.lastIndexOf(".");
+      const ref = key.slice(0, i);
+      const pin = key.slice(i + 1);
+      const comp = project.components.get(ref);
+      const part = comp && library.get(comp.part);
+      if (!part) continue;
+      const p = componentPins(comp, part).find((q) => q.id === pin);
+      if (!p) continue;
+      x0 = Math.min(x0, p.x);
+      y0 = Math.min(y0, p.y);
+      x1 = Math.max(x1, p.x);
+      y1 = Math.max(y1, p.y);
+    }
+    if (x0 !== Infinity) total += x1 - x0 + (y1 - y0);
+  }
+  return total;
+}
+
 export function contentBounds(project, library) {
   let x0 = Infinity;
   let y0 = Infinity;
