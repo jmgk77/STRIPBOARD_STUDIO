@@ -112,8 +112,11 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
   };
 
   const endpointUsable = (net, x, y) => {
-    if (!stripUsable(net, x, y)) return false;
     const c = cellId(x, y);
+    // A jumper ends in a HOLE, and a hole already takes a component lead: never share it,
+    // not even with a pin of the same net. Connect through the strip in the adjacent cell.
+    if (pinAt.has(c)) return false;
+    if (!stripUsable(net, x, y)) return false;
     return !arc.has(c) && !jumperEnds.has(c);
   };
 

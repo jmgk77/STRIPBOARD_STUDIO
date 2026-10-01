@@ -316,7 +316,7 @@ export class App {
 
   compact() {
     // Spread/wire/span weigh heavily, so parts are pulled together and leads shortened.
-    this._optimize(COMPACT_WEIGHTS, "Compacting…", "compacted", { maxPasses: 5, maxEvaluations: 120 });
+    this._optimize(COMPACT_WEIGHTS, "Compacting…", "compacted", { maxPasses: 6, maxEvaluations: 300 });
   }
 
   _optimize(weights, busyMsg, verb, opts = {}) {
@@ -357,9 +357,39 @@ export class App {
   }
 
   showAscii() {
-    const text = toAscii(this.project, LIBRARY);
-    document.getElementById("asciiText").textContent = text;
+    const pre = document.getElementById("asciiText");
+    pre.textContent = toAscii(this.project, LIBRARY);
     document.getElementById("asciiDlg").showModal();
+    this._select( pre); // so Ctrl+C works even if the clipboard API is blocked
+  }
+
+  _select(node) {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  _copyAscii() {
+    const pre = document.getElementById("asciiText");
+    const fallback = () => {
+      this._select(pre);
+      try {
+        const ok = document.execCommand("copy");
+        this._status(ok ? "board text copied" : "text selected — press Ctrl+C");
+      } catch {
+        this._status("text selected — press Ctrl+C");
+      }
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(pre.textContent)
+        .then(() => this._status("board text copied"))
+        .catch(fallback);
+    } else {
+      fallback();
+    }
   }
 
   setView(copper) {
@@ -433,11 +463,7 @@ export class App {
     document.getElementById("asciiClose").addEventListener("click", () =>
       document.getElementById("asciiDlg").close(),
     );
-    document.getElementById("asciiCopy").addEventListener("click", () => {
-      const text = document.getElementById("asciiText").textContent;
-      navigator.clipboard?.writeText(text);
-      this._status("board text copied to clipboard");
-    });
+    document.getElementById("asciiCopy").addEventListener("click", () => this._copyAscii());
     on("connect", () => this.setMode(this.mode === "connect" ? "select" : "connect"));
     document.getElementById("names").addEventListener("change", (e) => {
       this.showNames = e.target.checked;
