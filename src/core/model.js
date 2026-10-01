@@ -10,6 +10,13 @@ export function splitPin(key) {
   return { ref: key.slice(0, i), pin: key.slice(i + 1) };
 }
 
+/** Human label for a pin: "U1.GPIO4" when named, else "U1.L4". */
+export function pinLabel(project, key) {
+  const { ref, pin } = splitPin(key);
+  const name = project.components.get(ref)?.pinNames?.[pin];
+  return name ? `${ref}.${name}` : key;
+}
+
 export class Net {
   constructor(id, pins = [], weight = 1) {
     this.id = id;
@@ -23,7 +30,7 @@ export class Net {
 }
 
 export class Component {
-  constructor({ ref, part, x = 1, y = 1, rot = 0, locked = false, value = "" }) {
+  constructor({ ref, part, x = 1, y = 1, rot = 0, locked = false, value = "", pinNames = null }) {
     this.ref = ref;
     this.part = part;
     this.x = x;
@@ -31,11 +38,14 @@ export class Component {
     this.rot = rot;
     this.locked = locked;
     this.value = value;
+    this.pinNames = pinNames ? { ...pinNames } : {}; // pin id -> display name
   }
 
   toJSON() {
-    const { ref, part, x, y, rot, locked, value } = this;
-    return { ref, part, x, y, rot, locked, value };
+    const { ref, part, x, y, rot, locked, value, pinNames } = this;
+    const out = { ref, part, x, y, rot, locked, value };
+    if (Object.keys(pinNames).length) out.pinNames = pinNames;
+    return out;
   }
 }
 

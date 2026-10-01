@@ -45,7 +45,7 @@ export function makeMapper(state) {
 }
 
 export function render(svg, state) {
-  const { project, library, view, selected, pending, solved } = state;
+  const { project, library, view, selected, pending, solved, showNames = true } = state;
   const { sx, sy } = makeMapper(state);
   const { cols, rows } = project;
   const width = cols * CELL + PAD * 2;
@@ -179,14 +179,21 @@ function drawComponent(svg, comp, part, state, sx, sy) {
 
   // pins
   for (const p of pts) {
-    const onNet = project.netOf(`${comp.ref}.${p.id}`);
     const isPending = pending && pending === `${comp.ref}.${p.id}`;
     el("circle", {
       "data-ref": comp.ref, "data-pin": p.id,
       cx: p.X, cy: p.Y, r: isPending ? 6 : 4.5,
-      fill: isPending ? "#ffcc33" : (onNet ? "#202020" : "#202020"),
+      fill: "#202020",
       stroke: isPending ? "#ffaa00" : "#202020", "stroke-width": isPending ? 2.5 : 1,
     }, g);
+  }
+
+  // named pins (the whole point of naming them is to read them off the board)
+  if (state.showNames !== false && comp.pinNames) {
+    for (const p of pts) {
+      const name = comp.pinNames[p.id];
+      if (name) el("text", { x: p.X + 7, y: p.Y - 5, "font-size": 8, fill: "#123" }, g).textContent = name;
+    }
   }
 
   // label

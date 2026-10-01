@@ -48,6 +48,14 @@ test("a pin sitting on a cut is an error", () => {
   assert.ok(r.issues.some((i) => i.code === "pin-on-cut"));
 });
 
+test("overlapping components are flagged", () => {
+  const p = new Project({ cols: 12, rows: 12 });
+  p.addComponent(new Component({ ref: "J1", part: "header4", x: 2, y: 2 })); // rows 2..5
+  p.addComponent(new Component({ ref: "J2", part: "header4", x: 2, y: 4 })); // rows 4..7
+  const r = analyze(p, LIBRARY);
+  assert.ok(r.issues.some((i) => i.code === "overlap"));
+});
+
 test("two jumpers sharing a hole is an error", () => {
   const p = base();
   p.jumpers = [

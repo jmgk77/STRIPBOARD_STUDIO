@@ -50,7 +50,7 @@ class MinHeap {
   }
 }
 
-export function route(project, library) {
+export function route(project, library, { maxAttempts = Infinity } = {}) {
   const { cols, rows } = project;
 
   const pinAt = new Map(); // cell -> net id | null (every pin occupies its hole)
@@ -70,7 +70,9 @@ export function route(project, library) {
   }
 
   let best = null;
+  let tried = 0;
   for (const order of orderings([...pinsByNet.keys()], pinsByNet)) {
+    if (tried++ >= maxAttempts) break;
     const attempt = runAttempt(project, library, order, pinAt, pinsByNet);
     if (best === null || attempt.score < best.score) best = attempt;
     if (best.errors === 0) break; // a valid result; good enough
@@ -115,21 +117,46 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
     return !arc.has(c) && !jumperEnds.has(c);
   };
 
-  const verticalOk = (net, x, y1, y2) => {
-    if (!endpointUsable(net, x, y1) || !endpointUsable(net, x, y2)) return false;
-    const lo = Math.min(y1, y2);
-    const hi = Math.max(y1, y2);
-    for (let y = lo + 1; y < hi; y++) {
+  // Rows in a column that block a jumper's passage (any pin, or an existing arc/end).
+  const blockedRowsIn = (x) => {
+    const out = [];
+    for (let y = 1; y <= rows; y++) {
       const c = cellId(x, y);
-      if (pinAt.has(c) || arc.has(c) || jumperEnds.has(c)) return false;
+      if (pinAt.has(c) || arc.has(c) || jumperEnds.has(c)) out.push(y);
     }
-    return true;
+    return out;
+  };
+
+  const blockedBetween = (sorted, lo, hi) => {
+    if (lo > hi) return false;
+    let a = 0;
+    let b = sorted.length;
+    while (a < b) {
+      const m = (a + b) >> 1;
+      if (sorted[m] < lo) a = m + 1;
+      else b = m;
+    }
+    return a < sorted.length && sorted[a] <= hi;
   };
 
   function dijkstra(net, sources) {
     const dist = new Map();
     const prev = new Map();
     const heap = new MinHeap();
+    const blockedCache = new Map();
+    const endCache = new Map();
+    const blocked = (x) => {
+      if (!blockedCache.has(x)) blockedCache.set(x, blockedRowsIn(x));
+      return blockedCache.get(x);
+    };
+    const endpoints = (x) => {
+      if (!endCache.has(x)) {
+        const set = [];
+        for (let y = 1; y <= rows; y++) if (endpointUsable(net, x, y)) set.push(y);
+        endCache.set(x, set);
+      }
+      return endCache.get(x);
+    };
     for (const s of sources) {
       dist.set(s, 0);
       heap.push(s, 0);
@@ -138,20 +165,28 @@ function runAttempt(project, library, order, pinAt, pinsByNet) {
       const [d, cell] = heap.pop();
       if (d > (dist.get(cell) ?? Infinity)) continue;
       const [x, y] = cell.split(",").map(Number);
-      const relax = (nx, ny, cost, kind) => {
-        const ok = kind === "h" ? stripUsable(net, nx, ny) : endpointUsable(net, nx, ny);
-        if (!ok) return;
-        const nc = cellId(nx, ny);
+      for (const nx of [x - 1, x + 1]) {
+        if (nx < 1 || nx > cols || !stripUsable(net, nx, y)) continue;
+        const nc = cellId(nx, y);
+        if (d + 1 < (dist.get(nc) ?? Infinity)) {
+          dist.set(nc, d + 1);
+          prev.set(nc, { from: cell, kind: "h" });
+          heap.push(nc, d + 1);
+        }
+      }
+      const blk = blocked(x);
+      for (const ny of endpoints(x)) {
+        if (ny === y) continue;
+        const lo = Math.min(y, ny);
+        const hi = Math.max(y, ny);
+        if (blockedBetween(blk, lo + 1, hi - 1)) continue;
+        const cost = JUMPER_COST + Math.abs(ny - y);
+        const nc = cellId(x, ny);
         if (d + cost < (dist.get(nc) ?? Infinity)) {
           dist.set(nc, d + cost);
-          prev.set(nc, { from: cell, kind });
+          prev.set(nc, { from: cell, kind: "j" });
           heap.push(nc, d + cost);
         }
-      };
-      relax(x - 1, y, 1, "h");
-      relax(x + 1, y, 1, "h");
-      for (let ny = 1; ny <= rows; ny++) {
-        if (ny !== y && verticalOk(net, x, y, ny)) relax(x, ny, JUMPER_COST + Math.abs(ny - y), "j");
       }
     }
     return { dist, prev };
@@ -238,7 +273,7 @@ function orderings(nets, pinsByNet) {
   for (const first of nets) push([first, ...nets.filter((n) => n !== first)]);
   let seed = 987654321;
   const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed / 0x7fffffff);
-  for (let k = 0; k < 24; k++) {
+  for (let k = 0; k < 20; k++) {
     const arr = [...nets];
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(rnd() * (i + 1));

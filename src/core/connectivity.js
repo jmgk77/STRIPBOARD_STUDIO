@@ -67,12 +67,21 @@ export function analyze(project, library) {
 
   const pinNode = new Map();
   const pinPos = new Map();
+  const compBox = new Map(); // ref -> bounding box of its pins (collision proxy)
   for (const comp of project.components.values()) {
     const part = library.get(comp.part);
     if (!part) {
       issues.push({ level: "error", code: "unknown-part", message: `component ${comp.ref} uses unknown part ${comp.part}` });
       continue;
     }
+    const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    for (const p of componentPins(comp, part)) {
+      box.x0 = Math.min(box.x0, p.x);
+      box.y0 = Math.min(box.y0, p.y);
+      box.x1 = Math.max(box.x1, p.x);
+      box.y1 = Math.max(box.y1, p.y);
+    }
+    if (box.x0 !== Infinity) compBox.set(comp.ref, box);
     for (const p of componentPins(comp, part)) {
       const key = pinKey(comp.ref, p.id);
       pinPos.set(key, { x: p.x, y: p.y });
@@ -133,6 +142,18 @@ export function analyze(project, library) {
     if (arcs.length && pins.length) issues.push({ level: "error", code: "jumper-over-pin", message: `a jumper arcs through a pin at ${cell}` });
     if (arcs.length && ends.length) issues.push({ level: "error", code: "jumper-overlap", message: `a jumper overlaps another jumper at ${cell}` });
     if (pins.length > 1) issues.push({ level: "error", code: "pin-collision", message: `two pins share the hole at ${cell}` });
+  }
+
+  // Two components whose pin areas overlap would physically collide.
+  const refs = [...compBox.keys()];
+  for (let i = 0; i < refs.length; i++) {
+    for (let j = i + 1; j < refs.length; j++) {
+      const a = compBox.get(refs[i]);
+      const b = compBox.get(refs[j]);
+      if (a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1) {
+        issues.push({ level: "error", code: "overlap", message: `components ${refs[i]} and ${refs[j]} overlap` });
+      }
+    }
   }
 
   const all = [...issues, ...unconnected, ...shorts];

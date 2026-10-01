@@ -1,10 +1,11 @@
 // Application state and interactions. Renders through ui/scene.js and mutates the model
 // in core/. Undo/redo is whole-project snapshots taken before each change.
 
-import { Component, Project } from "../core/model.js";
+import { Component, Project, pinLabel } from "../core/model.js";
 import { LIBRARY, listParts } from "../core/library.js";
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
+import { optimize as optimizeLayout } from "../core/optimize.js";
 import { render, CELL, PAD } from "./scene.js";
 
 const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q" };
@@ -18,6 +19,7 @@ export class App {
     this.pending = null;
     this.mode = "select";
     this.solved = false;
+    this.showNames = true;
     this.issues = [];
     this.history = [];
     this.redoStack = [];
@@ -40,6 +42,7 @@ export class App {
       pending: this.pending,
       mode: this.mode,
       solved: this.solved,
+      showNames: this.showNames,
       issues: this.issues,
     });
     this._renderPalette();
@@ -70,7 +73,8 @@ export class App {
     for (const net of this.project.nets) {
       const item = document.createElement("div");
       item.className = "item";
-      item.textContent = `${net.id} (${net.pins.size}): ${[...net.pins].sort().join(", ")}`;
+      const pins = [...net.pins].sort().map((k) => pinLabel(this.project, k)).join(", ");
+      item.textContent = `${net.id} (${net.pins.size}): ${pins}`;
       box.appendChild(item);
     }
   }
@@ -96,12 +100,47 @@ export class App {
 
   _renderSelection() {
     const box = document.getElementById("selection");
+    box.innerHTML = "";
     const comp = this.selected ? this.project.components.get(this.selected) : null;
     if (!comp) {
       box.textContent = this.pending ? `connect: ${this.pending} — click another pin` : "(none)";
       return;
     }
-    box.textContent = `${comp.ref} — ${comp.part} — rot ${comp.rot}° — ${comp.locked ? "locked" : "free"}${comp.value ? " — " + comp.value : ""}`;
+    const part = LIBRARY.get(comp.part);
+    const head = document.createElement("div");
+    const lock = comp.locked ? "locked" : "free";
+    head.textContent = `${comp.ref} — ${part?.label ?? comp.part} — rot ${comp.rot}° — ${lock}`;
+    box.appendChild(head);
+
+    const hint = document.createElement("div");
+    hint.className = "muted";
+    hint.textContent = "pin names (blank = use the pin id):";
+    box.appendChild(hint);
+
+    const list = document.createElement("div");
+    list.className = "pinlist";
+    for (const pin of part?.pins ?? []) {
+      const row = document.createElement("div");
+      row.className = "pinrow";
+      const tag = document.createElement("span");
+      tag.className = "pintag";
+      tag.textContent = pin.id;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = pin.id;
+      input.value = comp.pinNames?.[pin.id] ?? "";
+      input.addEventListener("change", () => {
+        this.snapshot();
+        const value = input.value.trim();
+        if (value) comp.pinNames[pin.id] = value;
+        else delete comp.pinNames[pin.id];
+        this.render();
+      });
+      row.appendChild(tag);
+      row.appendChild(input);
+      list.appendChild(row);
+    }
+    box.appendChild(list);
   }
 
   // -- history ------------------------------------------------------------------
@@ -241,6 +280,20 @@ export class App {
     this._status(errors ? `solved with ${errors} problem(s)` : `solved: ${result.jumpers.length} jumper(s), ${result.cuts.size} cut(s)`);
   }
 
+  optimize() {
+    this.snapshot();
+    const info = optimizeLayout(this.project, LIBRARY);
+    const result = route(this.project, LIBRARY);
+    this.project.cuts = result.cuts;
+    this.project.jumpers = result.jumpers;
+    this.solved = true;
+    this._recomputeIssues();
+    this.render();
+    this._status(
+      `optimized ${info.components} free part(s): cost ${info.startScore} -> ${info.score} (${info.evaluations} evals)`,
+    );
+  }
+
   setView(copper) {
     this.view = copper ? "copper" : "front";
     this.render();
@@ -305,7 +358,12 @@ export class App {
     on("lock", () => this.lockSelected());
     on("delete", () => this.deleteSelected());
     on("solve", () => this.solve());
+    on("optimize", () => this.optimize());
     on("connect", () => this.setMode(this.mode === "connect" ? "select" : "connect"));
+    document.getElementById("names").addEventListener("change", (e) => {
+      this.showNames = e.target.checked;
+      this.render();
+    });
     document.getElementById("file").addEventListener("change", (e) => {
       if (e.target.files[0]) this.open(e.target.files[0]);
     });

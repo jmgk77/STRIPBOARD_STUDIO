@@ -96,3 +96,23 @@ aside h3 { margin: 10px 0 6px; font-size: 12px; text-transform: uppercase; lette
 .pill.ok { background: #1f4a2c; color: #7ee0a2; }
 
 .muted { color: var(--muted); }
+
+.pinlist { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
+.pinrow { display: flex; align-items: center; gap: 6px; }
+.pintag {
+  width: 40px;
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+.pinrow input {
+  flex: 1;
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12px;
+}

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { Project, Component, Net, pinKey } from "../src/core/model.js";
+import { Project, Component, Net, pinKey, pinLabel } from "../src/core/model.js";
 
 test("connect merges existing nets and keeps the first id", () => {
   const p = new Project();
@@ -28,6 +28,21 @@ test("uniqueRef skips taken refs", () => {
   const p = new Project();
   p.addComponent(new Component({ ref: "J1", part: "header2" }));
   assert.equal(p.uniqueRef("J"), "J2");
+});
+
+test("pinLabel prefers the instance pin name", () => {
+  const p = new Project();
+  p.addComponent(new Component({ ref: "U1", part: "module-2x10" }));
+  p.components.get("U1").pinNames["L1"] = "GPIO4";
+  assert.equal(pinLabel(p, "U1.L1"), "U1.GPIO4");
+  assert.equal(pinLabel(p, "U1.L2"), "U1.L2");
+});
+
+test("pin names survive a JSON round-trip", () => {
+  const p = new Project();
+  p.addComponent(new Component({ ref: "U1", part: "module-2x10", pinNames: { L1: "GPIO4" } }));
+  const q = Project.fromJSON(p.toJSON());
+  assert.equal(q.components.get("U1").pinNames.L1, "GPIO4");
 });
 
 test("JSON round-trips", () => {
