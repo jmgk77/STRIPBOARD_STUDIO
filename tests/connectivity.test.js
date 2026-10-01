@@ -1,0 +1,59 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import { Project, Component, Net, pinKey } from "../src/core/model.js";
+import { LIBRARY } from "../src/core/library.js";
+import { analyze, cellId } from "../src/core/connectivity.js";
+
+function base() {
+  const p = new Project({ cols: 12, rows: 10 });
+  p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // (2,2),(2,3)
+  p.addComponent(new Component({ ref: "J2", part: "header2", x: 6, y: 5 })); // (6,5),(6,6)
+  p.addComponent(new Component({ ref: "J3", part: "header2", x: 6, y: 2 })); // (6,2),(6,3)
+  return p;
+}
+
+test("two nets on one uncut strip short together", () => {
+  const p = base();
+  p.nets = [new Net("A", [pinKey("J1", "1")]), new Net("B", [pinKey("J3", "1")])];
+  const r = analyze(p, LIBRARY);
+  assert.equal(r.ok, false);
+  assert.ok(r.shorts.length >= 1);
+});
+
+test("a cut between them separates the nets", () => {
+  const p = base();
+  p.nets = [new Net("A", [pinKey("J1", "1")]), new Net("B", [pinKey("J3", "1")])];
+  p.cuts = new Set([cellId(4, 2)]);
+  const r = analyze(p, LIBRARY);
+  assert.equal(r.ok, true, JSON.stringify(r.issues));
+});
+
+test("a net split across rows is open; a jumper closes it", () => {
+  const p = base();
+  p.nets = [new Net("A", [pinKey("J1", "1"), pinKey("J2", "1")])]; // (2,2) and (6,5)
+  let r = analyze(p, LIBRARY);
+  assert.equal(r.ok, false);
+  assert.ok(r.unconnected.length >= 1);
+  p.jumpers = [{ x: 3, ya: 2, yb: 5 }]; // free column, not on a pin
+  r = analyze(p, LIBRARY);
+  assert.equal(r.ok, true, JSON.stringify(r.issues));
+});
+
+test("a pin sitting on a cut is an error", () => {
+  const p = base();
+  p.cuts = new Set([cellId(2, 2)]);
+  const r = analyze(p, LIBRARY);
+  assert.equal(r.ok, false);
+  assert.ok(r.issues.some((i) => i.code === "pin-on-cut"));
+});
+
+test("two jumpers sharing a hole is an error", () => {
+  const p = base();
+  p.jumpers = [
+    { x: 4, ya: 2, yb: 5 },
+    { x: 4, ya: 2, yb: 8 },
+  ];
+  const r = analyze(p, LIBRARY);
+  assert.ok(r.issues.some((i) => i.code === "jumper-collision"));
+});

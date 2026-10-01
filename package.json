@@ -1,0 +1,11 @@
+{
+  "name": "stripboard-shield-planner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser tool to plan ESP32/Arduino shields on stripboard: place modules and headers, connect pins, check the copper, and lightly optimize the layout.",
+  "scripts": {
+    "start": "node serve.mjs",
+    "test": "node --test"
+  }
+}
