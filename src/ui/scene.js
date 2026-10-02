@@ -157,12 +157,13 @@ function drawCutBorder(svg, state, sx, sy) {
   const { project, library } = state;
   const b = contentBounds(project, library);
   if (!b) return;
-  const xa = sx(b.x0) - CELL / 2;
-  const xb = sx(b.x1) + CELL / 2;
+  // Pad in screen space: sx() is mirrored on the copper side, so expand min/max, not x0/x1.
+  const c0 = sx(b.x0);
+  const c1 = sx(b.x1);
+  const x = Math.min(c0, c1) - CELL / 2;
+  const w = Math.abs(c0 - c1) + CELL;
   const y0 = sy(b.y0) - CELL / 2;
   const y1 = sy(b.y1) + CELL / 2;
-  const x = Math.min(xa, xb);
-  const w = Math.abs(xb - xa);
   el("rect", {
     x, y: y0, width: w, height: y1 - y0, rx: 4, fill: "none",
     stroke: "#ffd54a", "stroke-width": 2, "stroke-dasharray": "9 5",
