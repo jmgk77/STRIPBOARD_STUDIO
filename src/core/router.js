@@ -223,17 +223,22 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
         }
       }
       const blk = blocked(x);
-      for (const ny of endpoints(x)) {
-        if (ny === y) continue;
-        const lo = Math.min(y, ny);
-        const hi = Math.max(y, ny);
-        if (blockedBetween(blk, lo + 1, hi - 1)) continue;
-        const cost = JUMPER_COST + Math.abs(ny - y);
-        const nc = cellId(x, ny);
-        if (d + cost < (dist.get(nc) ?? Infinity)) {
-          dist.set(nc, d + cost);
-          prev.set(nc, { from: cell, kind: "j" });
-          heap.push([nc, x, ny], d + cost);
+      // A jumper STARTS in a hole too: only leave a cell that could take a jumper end
+      // (not a pin, not another jumper's end/arc, not under a flush body). Otherwise two
+      // jumpers could share one hole.
+      if (endpointUsable(net, x, y)) {
+        for (const ny of endpoints(x)) {
+          if (ny === y) continue;
+          const lo = Math.min(y, ny);
+          const hi = Math.max(y, ny);
+          if (blockedBetween(blk, lo + 1, hi - 1)) continue;
+          const cost = JUMPER_COST + Math.abs(ny - y);
+          const nc = cellId(x, ny);
+          if (d + cost < (dist.get(nc) ?? Infinity)) {
+            dist.set(nc, d + cost);
+            prev.set(nc, { from: cell, kind: "j" });
+            heap.push([nc, x, ny], d + cost);
+          }
         }
       }
       // A fixed jumper joins its two holes at no cost (it is already soldered).

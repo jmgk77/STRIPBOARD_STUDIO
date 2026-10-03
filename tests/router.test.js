@@ -35,6 +35,16 @@ test("a flush body's holes are a jumper keep-out", () => {
   }
 });
 
+test("no hole is ever shared by two jumpers", () => {
+  const p = new Project({ cols: 12, rows: 10 });
+  p.addComponent(new Component({ ref: "J", part: "header3", x: 5, y: 2 })); // pins (5,2),(5,3),(5,4)
+  p.nets = [new Net("A", [pinKey("J", "1"), pinKey("J", "2"), pinKey("J", "3")])];
+  const r = route(p, LIBRARY);
+  const ends = [];
+  for (const j of r.jumpers) ends.push(`${j.x},${j.ya}`, `${j.x},${j.yb}`);
+  assert.equal(new Set(ends).size, ends.length, "a hole is shared by two jumpers");
+});
+
 test("router leaves two different nets on adjacent holes as a short (cannot be cut)", () => {
   const p = new Project({ cols: 12, rows: 6 });
   p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // (2,2)
