@@ -9,6 +9,7 @@ import { optimize as optimizeLayout, COMPACT_WEIGHTS } from "../core/optimize.js
 import { contentBounds, rotateLocal } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
 import { exportNetlist } from "../core/netlist.js";
+import { alignCuts } from "../core/align.js";
 import { render, CELL, PAD } from "./scene.js";
 import { renderSchematic } from "./schematic.js";
 
@@ -662,7 +663,7 @@ export class App {
       this.project.fixedCuts = this.project.fixedCuts ?? new Set();
       const result = route(this.project, LIBRARY);
       this.snapshot();
-      this.project.cuts = new Set(result.cuts);
+      this.project.cuts = alignCuts(this.project, LIBRARY, result.cuts, result.jumpers);
       this.project.jumpers = result.jumpers.map((j) => ({
         x: j.x, ya: j.ya, yb: j.yb, net: j.net, fixed: !!j.fixed,
       }));
