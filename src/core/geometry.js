@@ -138,7 +138,13 @@ export function contentBounds(project, library) {
   for (const comp of project.components.values()) {
     const part = library.get(comp.part);
     if (!part) continue;
-    for (const p of componentPins(comp, part)) hit(p.x, p.y);
+    const body = componentBody(comp, part);
+    if (body) {
+      hit(body.x0, body.y0);
+      hit(body.x1, body.y1);
+    } else {
+      for (const p of componentPins(comp, part)) hit(p.x, p.y);
+    }
   }
   for (const c of project.cuts) {
     const [x, y] = c.split(",").map(Number);

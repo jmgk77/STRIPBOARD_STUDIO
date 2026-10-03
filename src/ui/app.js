@@ -36,7 +36,13 @@ export class App {
     this._bindToolbar();
     this._bindBoard();
     this._bindKeyboard();
+    this._syncSizeInputs();
     this.render();
+  }
+
+  _syncSizeInputs() {
+    document.getElementById("cols").value = this.project.cols;
+    document.getElementById("rows").value = this.project.rows;
   }
 
   // -- rendering ----------------------------------------------------------------
@@ -559,6 +565,7 @@ export class App {
     const rows = Number(document.getElementById("rows").value) || 26;
     this.project = new Project({ cols, rows });
     this.fileName = null;
+    this._syncSizeInputs();
     this.selected = null;
     this.pending = null;
     this.solved = false;
@@ -820,6 +827,6 @@ export class App {
 }
 
 function starterProject() {
-  const p = new Project({ cols: 24, rows: 16, title: "shield" });
-  return p;
+  // Match the toolbar defaults so the board size on screen equals the inputs.
+  return new Project({ cols: 34, rows: 26, title: "shield" });
 }

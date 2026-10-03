@@ -16,6 +16,7 @@ export class PartDef {
     rotatable = true,
     defaultValue = "",
     bendable = null, // { min, max, default }: two-lead part whose span can be formed
+    wiresUnder = true, // may jumpers/wires pass UNDER the body? (used by the router keepout)
   }) {
     this.name = name;
     this.label = label;
@@ -25,6 +26,7 @@ export class PartDef {
     this.rotatable = rotatable;
     this.defaultValue = defaultValue;
     this.bendable = bendable;
+    this.wiresUnder = wiresUnder;
     const ids = pins.map((p) => p.id);
     if (new Set(ids).size !== ids.length) throw new Error(`part ${name}: duplicate pin ids`);
   }
@@ -93,7 +95,7 @@ register(new PartDef({
 for (let n = 2; n <= 8; n++) {
   register(new PartDef({
     name: `header${n}`, label: `${n}-pin header`, kind: "header", pins: colPins(numbers(n)),
-    body: { x: 0, y: 0, w: 1, h: n },
+    body: { x: 0, y: 0, w: 1, h: n }, wiresUnder: false,
   }));
 }
 // Screw terminals: classic 5.08 mm pitch = 2 holes between pins; the block is 3 wide and
@@ -102,14 +104,14 @@ for (let n = 2; n <= 4; n++) {
   register(new PartDef({
     name: `terminal${n}`, label: `Screw terminal (${n}-way)`, kind: "terminal",
     pins: Array.from({ length: n }, (_, i) => ({ id: String(i + 1), x: 0, y: i * 2 })),
-    body: { x: -1, y: -1, w: 3, h: (n - 1) * 2 + 3 },
+    body: { x: -1, y: -1, w: 3, h: (n - 1) * 2 + 3 }, wiresUnder: false,
   }));
 }
 for (const half of [4, 7, 8]) {
   register(new PartDef({
     name: `dip${half * 2}`, label: `DIP-${half * 2}`, kind: "dip",
     pins: dualRow(numbers(half), numbers(half).map((n) => String(Number(n) + half)), 3),
-    body: { x: 1, y: 0, w: 2, h: half },
+    body: { x: 1, y: 0, w: 2, h: half }, wiresUnder: false,
   }));
 }
 
@@ -119,16 +121,16 @@ for (const half of [4, 7, 8]) {
 register(new PartDef({
   name: "module-2x15", label: "Module 2x15 (dev board)", kind: "module",
   pins: dualRow(labels("L", 15), labels("R", 15), 9),
-  body: { x: -1, y: -1, w: 11, h: 17 },
+  body: { x: -1, y: -1, w: 11, h: 17 }, wiresUnder: false,
 }));
 register(new PartDef({
   name: "module-2x10", label: "Module 2x10", kind: "module",
   pins: dualRow(labels("L", 10), labels("R", 10), 6),
-  body: { x: -1, y: -1, w: 8, h: 12 },
+  body: { x: -1, y: -1, w: 8, h: 12 }, wiresUnder: false,
 }));
 register(new PartDef({
   name: "module-1x8", label: "Module 1x8", kind: "module", pins: colPins(labels("P", 8)),
-  body: { x: -1, y: -1, w: 3, h: 10 },
+  body: { x: -1, y: -1, w: 3, h: 10 }, wiresUnder: false,
 }));
 
 export function listParts() {
@@ -160,7 +162,8 @@ export function buildBarPart(spec) {
   } else {
     pins = Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i + 1}`, x: 0, y: i }));
   }
-  return new PartDef({ name, label, kind: doubleRow ? "module" : "header", pins });
+  // A bare double pin bar is just two rows of pins: wires may run between them.
+  return new PartDef({ name, label, kind: doubleRow ? "module" : "header", pins, wiresUnder: doubleRow });
 }
 
 /** Rebuild and register every custom part stored in a project. */

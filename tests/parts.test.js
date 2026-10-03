@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { buildBarPart, LIBRARY } from "../src/core/library.js";
 import { Project, Component } from "../src/core/model.js";
-import { componentBody } from "../src/core/geometry.js";
+import { componentBody, contentBounds } from "../src/core/geometry.js";
 import { analyze } from "../src/core/connectivity.js";
 
 test("single-row pin bar has one column of pins", () => {
@@ -32,6 +32,12 @@ test("screw terminal body is a 3x5 block", () => {
   assert.deepEqual(part.body, { x: -1, y: -1, w: 3, h: 5 });
   const c = new Component({ ref: "T1", part: "terminal2", x: 5, y: 4 });
   assert.deepEqual(componentBody(c, part), { x0: 4, y0: 3, x1: 6, y1: 7 });
+});
+
+test("contentBounds includes the physical body (so Trim fits it)", () => {
+  const p = new Project({ cols: 12, rows: 12 });
+  p.addComponent(new Component({ ref: "T1", part: "terminal2", x: 5, y: 4 }));
+  assert.deepEqual(contentBounds(p, LIBRARY), { x0: 4, y0: 3, x1: 6, y1: 7 });
 });
 
 test("terminal bodies collide when placed adjacent", () => {
