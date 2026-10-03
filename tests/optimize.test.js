@@ -66,18 +66,6 @@ test("optimizeAsync (cooperative) resolves and never worsens the score", async (
   assert.ok(info.score <= info.startScore, `${info.score} <= ${info.startScore}`);
 });
 
-test("a time budget stops the optimizer early and reports timedOut", () => {
-  const p = new Project({ cols: 24, rows: 12 });
-  p.addComponent(new Component({ ref: "J1", part: "header4", x: 2, y: 2, locked: true }));
-  p.addComponent(new Component({ ref: "J2", part: "header4", x: 12, y: 8 }));
-  p.nets = [
-    new Net("A", [pinKey("J1", "1"), pinKey("J2", "1")]),
-    new Net("B", [pinKey("J1", "2"), pinKey("J2", "2")]),
-  ];
-  const info = optimize(p, LIBRARY, { maxMs: 0 });
-  assert.equal(info.timedOut, true);
-});
-
 test("a group moves as a rigid cluster (relative offsets preserved)", () => {
   const p = new Project({ cols: 26, rows: 14 });
   // Two terminals in one group; a locked anchor elsewhere to pull them toward.

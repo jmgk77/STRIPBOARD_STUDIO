@@ -167,17 +167,13 @@ function evaluate(project, library, cache, weights) {
 function* optimizeGen(
   project,
   library,
-  { weights: overrides = {}, maxPasses = 4, maxEvaluations = 120, maxMs = Infinity, cooperative = false, yieldMs = 12 } = {},
+  { weights: overrides = {}, maxPasses = 4, maxEvaluations = 120, cooperative = false, yieldMs = 12 } = {},
 ) {
   const weights = { ...DEFAULT_WEIGHTS, ...overrides };
   const cache = new Map();
   let evaluations = 0;
   let lastYield = Date.now();
   const shouldYield = () => cooperative && Date.now() - lastYield >= yieldMs;
-  // Time budget: keep the synchronous run short enough that the browser does not flag the
-  // page as unresponsive (each evaluation is a full route + analyze).
-  const deadline = maxMs === Infinity ? Infinity : Date.now() + maxMs;
-  const budget = () => evaluations >= maxEvaluations || Date.now() > deadline;
   const units = freeUnits(project);
   const free = units.flatMap((u) => u.members);
   const freeSet = new Set(free);
@@ -192,7 +188,7 @@ function* optimizeGen(
     let improved = false;
 
     // 1. shift the whole free cluster onto the fixed parts (closes big gaps cheaply)
-    for (let round = 0; round < 3 && !budget(); round++) {
+    for (let round = 0; round < 3 && evaluations < maxEvaluations; round++) {
       let bestShift = null;
       let bestVal = best;
       const seen = new Set();
@@ -201,7 +197,7 @@ function* optimizeGen(
         const key = `${dx},${dy}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        if (budget()) break;
+        if (evaluations >= maxEvaluations) break;
         if (shouldYield()) {
           lastYield = Date.now();
           yield evaluations;
@@ -232,7 +228,7 @@ function* optimizeGen(
 
     // 2. refine each free unit: a lone part rotates/moves/bends; a group only translates.
     for (const unit of units) {
-      if (budget()) break;
+      if (evaluations >= maxEvaluations) break;
       if (shouldYield()) {
         lastYield = Date.now();
         yield evaluations;
@@ -281,7 +277,7 @@ function* optimizeGen(
       let bestMove = null;
       let bestVal = best;
       for (const cand of candidates) {
-        if (budget()) break;
+        if (evaluations >= maxEvaluations) break;
         if (shouldYield()) {
           lastYield = Date.now();
           yield evaluations;
@@ -303,8 +299,7 @@ function* optimizeGen(
     if (!improved) break;
   }
 
-  const timedOut = Date.now() > deadline;
-  return { score: best.score, startScore, evaluations, components: free.length, spread: best.spread, wire: best.wire, timedOut };
+  return { score: best.score, startScore, evaluations, components: free.length, spread: best.spread, wire: best.wire };
 }
 
 /** Synchronous optimize: drains the generator in one task (used by tests and headless code). */
