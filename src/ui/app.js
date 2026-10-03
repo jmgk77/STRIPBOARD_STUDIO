@@ -1299,7 +1299,7 @@ export class App {
         this.selectedWire = null;
         this.selectedNet = null;
         this.render();
-        this._status(`${name} ready — 'Use this' to make it the edit board`);
+        this._status(`${name} ready${this._computeTimedOut ? " (stopped early to stay responsive)" : ""} — 'Use this' to make the edit board`);
       });
       return;
     }
@@ -1341,10 +1341,18 @@ export class App {
       }
       return clone;
     }
+    this._computeTimedOut = false;
     if (name === "optimize" || name === "compact" || name === "easy") {
-      if (name === "compact") optimizeLayout(clone, LIBRARY, { weights: COMPACT_WEIGHTS, maxPasses: 6, maxEvaluations: 300 });
-      else if (name === "easy") optimizeLayout(clone, LIBRARY, { weights: EASY_WEIGHTS, maxPasses: 6, maxEvaluations: 300 });
-      else optimizeLayout(clone, LIBRARY);
+      // A time budget keeps the synchronous optimizer from freezing the tab. If it stops
+      // early we still return the best layout found and say so in the status line.
+      const opts =
+        name === "compact"
+          ? { weights: COMPACT_WEIGHTS, maxPasses: 6, maxEvaluations: 300, maxMs: 2500 }
+          : name === "easy"
+            ? { weights: EASY_WEIGHTS, maxPasses: 6, maxEvaluations: 300, maxMs: 2500 }
+            : { maxMs: 1500 };
+      const info = optimizeLayout(clone, LIBRARY, opts);
+      if (info.timedOut) this._computeTimedOut = true;
     }
     // solve / optimize / compact all finish by routing the (possibly optimized) board
     const result = route(clone, LIBRARY);

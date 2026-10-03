@@ -165,11 +165,15 @@ function evaluate(project, library, cache, weights) {
 export function optimize(
   project,
   library,
-  { weights: overrides = {}, maxPasses = 4, maxEvaluations = 120 } = {},
+  { weights: overrides = {}, maxPasses = 4, maxEvaluations = 120, maxMs = Infinity } = {},
 ) {
   const weights = { ...DEFAULT_WEIGHTS, ...overrides };
   const cache = new Map();
   let evaluations = 0;
+  // Time budget: keep the synchronous run short enough that the browser does not flag the
+  // page as unresponsive (each evaluation is a full route + analyze).
+  const deadline = maxMs === Infinity ? Infinity : Date.now() + maxMs;
+  const budget = () => evaluations >= maxEvaluations || Date.now() > deadline;
   const units = freeUnits(project);
   const free = units.flatMap((u) => u.members);
   const freeSet = new Set(free);
@@ -184,7 +188,7 @@ export function optimize(
     let improved = false;
 
     // 1. shift the whole free cluster onto the fixed parts (closes big gaps cheaply)
-    for (let round = 0; round < 3 && evaluations < maxEvaluations; round++) {
+    for (let round = 0; round < 3 && !budget(); round++) {
       let bestShift = null;
       let bestVal = best;
       const seen = new Set();
@@ -193,7 +197,7 @@ export function optimize(
         const key = `${dx},${dy}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        if (evaluations >= maxEvaluations) break;
+        if (budget()) break;
         for (const c of free) {
           c.x += dx;
           c.y += dy;
@@ -220,7 +224,7 @@ export function optimize(
 
     // 2. refine each free unit: a lone part rotates/moves/bends; a group only translates.
     for (const unit of units) {
-      if (evaluations >= maxEvaluations) break;
+      if (budget()) break;
       const members = unit.members;
       const bases = members.map((m) => ({ x: m.x, y: m.y, rot: m.rot, span: m.span }));
       // Candidates are transforms: absolute fields for a singleton, dx/dy for a rigid group.
@@ -265,7 +269,7 @@ export function optimize(
       let bestMove = null;
       let bestVal = best;
       for (const cand of candidates) {
-        if (evaluations >= maxEvaluations) break;
+        if (budget()) break;
         apply(cand);
         const val = evaluate(project, library, cache, weights);
         evaluations += 1;
@@ -283,5 +287,6 @@ export function optimize(
     if (!improved) break;
   }
 
-  return { score: best.score, startScore, evaluations, components: free.length, spread: best.spread, wire: best.wire };
+  const timedOut = Date.now() > deadline;
+  return { score: best.score, startScore, evaluations, components: free.length, spread: best.spread, wire: best.wire, timedOut };
 }
