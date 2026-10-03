@@ -5,7 +5,8 @@ import { Project, Component, Net, pinKey } from "../src/core/model.js";
 import { LIBRARY } from "../src/core/library.js";
 import { analyze } from "../src/core/connectivity.js";
 import { contentBounds } from "../src/core/geometry.js";
-import { optimize } from "../src/core/optimize.js";
+import { optimize, EASY_WEIGHTS, COMPACT_WEIGHTS, BALANCED_WEIGHTS } from "../src/core/optimize.js";
+import { route } from "../src/core/router.js";
 
 test("optimizer fixes an off-board rotated part", () => {
   const p = new Project({ cols: 16, rows: 12 });
@@ -31,6 +32,29 @@ test("compact pulls a free part toward a locked one", () => {
   const b1 = contentBounds(p, LIBRARY);
   const spread1 = b1.x1 - b1.x0 + (b1.y1 - b1.y0);
   assert.ok(spread1 < spread0, `spread ${spread0} -> ${spread1}`);
+});
+
+test("three presets exist; easy favours fewer jumpers than balanced", () => {
+  assert.equal(typeof BALANCED_WEIGHTS, "object");
+  assert.equal(typeof COMPACT_WEIGHTS, "object");
+  assert.ok(EASY_WEIGHTS.jumpers > BALANCED_WEIGHTS.jumpers, "easy must weight jumpers higher");
+
+  const build = () => {
+    const p = new Project({ cols: 24, rows: 12 });
+    p.addComponent(new Component({ ref: "J1", part: "header4", x: 2, y: 2, locked: true }));
+    p.addComponent(new Component({ ref: "J2", part: "header4", x: 5, y: 8, locked: false }));
+    p.nets = [
+      new Net("A", [pinKey("J1", "1"), pinKey("J2", "1")]),
+      new Net("B", [pinKey("J1", "2"), pinKey("J2", "2")]),
+    ];
+    return p;
+  };
+  const jumpers = (p) => route(p, LIBRARY).jumpers.length;
+  const bal = build();
+  optimize(bal, LIBRARY, { maxPasses: 6, maxEvaluations: 300 });
+  const easy = build();
+  optimize(easy, LIBRARY, { weights: EASY_WEIGHTS, maxPasses: 6, maxEvaluations: 300 });
+  assert.ok(jumpers(easy) <= jumpers(bal), `easy ${jumpers(easy)} vs balanced ${jumpers(bal)}`);
 });
 
 test("optimizer never moves a locked part", () => {

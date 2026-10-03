@@ -15,8 +15,15 @@ import { componentPins, contentBounds, resolveSpan, totalWirelength } from "./ge
 import { route } from "./router.js";
 
 const ROTS = [0, 90, 180, 270];
+// One objective, three presets (master prompt §9):
+//   Balanced (default) -- an even trade of jumpers, cuts, size and wirelength.
+//   Compact            -- strongly prefer a small board (higher spread/wire/span weights).
+//   Easy               -- strongly prefer few jumpers (wires are the fiddly part to build),
+//                         and slightly favour fewer cuts and some breathing room.
 const DEFAULT_WEIGHTS = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 2, wire: 1, span: 1 };
+export const BALANCED_WEIGHTS = DEFAULT_WEIGHTS;
 export const COMPACT_WEIGHTS = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 8, wire: 4, span: 3 };
+export const EASY_WEIGHTS = { errors: 1000, diag: 200, jumpers: 22, cuts: 4, spread: 3, wire: 1, span: 1 };
 
 function pinsBounds(comps, library) {
   let x0 = Infinity;

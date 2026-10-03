@@ -5,7 +5,7 @@ import { Component, Project, pinLabel, pinKey, splitPin } from "../core/model.js
 import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } from "../core/library.js";
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
-import { optimize as optimizeLayout, COMPACT_WEIGHTS } from "../core/optimize.js";
+import { optimize as optimizeLayout, COMPACT_WEIGHTS, EASY_WEIGHTS } from "../core/optimize.js";
 import { componentBody, componentPins, contentBounds, rotateLocal, rowLabel, rowLetter } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
 import { exportNetlist } from "../core/netlist.js";
@@ -17,6 +17,9 @@ const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q", modul
 const AUTOSAVE_KEY = "stripboard-studio:autosave";
 const SAVED_NAMES_KEY = "stripboard-studio:saved-names";
 const RECENT_PARTS_KEY = "stripboard-studio:recent-parts";
+
+// Fresh set of (empty) cached result tabs.
+const emptyVersions = () => ({ solve: null, optimize: null, compact: null, easy: null, trim: null });
 
 // Shift a "x,y" cell key by (dx, dy).
 function shiftCell(key, dx, dy) {
@@ -49,7 +52,7 @@ export class App {
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
     this.schematic = false;
     this.active = "edit";
-    this.versions = { solve: null, optimize: null, compact: null, trim: null };
+    this.versions = emptyVersions();
     this._editingPart = null;
     this._editBefore = null;
     this._statusTimer = null;
@@ -671,7 +674,7 @@ export class App {
 
   _afterStructuralChange(invalidate = true) {
     this.dirty = true;
-    this.versions = { solve: null, optimize: null, compact: null, trim: null };
+    this.versions = emptyVersions();
     if (invalidate) this.invalidateRouting();
     else this.solved = this.project.jumpers.length > 0 || this.project.cuts.size > 0;
     this.selected = this.project.components.has(this.selected) ? this.selected : null;
@@ -1247,6 +1250,10 @@ export class App {
     this.switchTab("compact");
   }
 
+  easy() {
+    this.switchTab("easy");
+  }
+
   trim() {
     this.switchTab("trim");
   }
@@ -1302,8 +1309,9 @@ export class App {
       }
       return clone;
     }
-    if (name === "optimize" || name === "compact") {
+    if (name === "optimize" || name === "compact" || name === "easy") {
       if (name === "compact") optimizeLayout(clone, LIBRARY, { weights: COMPACT_WEIGHTS, maxPasses: 6, maxEvaluations: 300 });
+      else if (name === "easy") optimizeLayout(clone, LIBRARY, { weights: EASY_WEIGHTS, maxPasses: 6, maxEvaluations: 300 });
       else optimizeLayout(clone, LIBRARY);
     }
     // solve / optimize / compact all finish by routing the (possibly optimized) board
@@ -1320,7 +1328,7 @@ export class App {
     // before swapping it in, and keep the history so Ctrl+Z returns to it.
     this.snapshot();
     this.project = next;
-    this.versions = { solve: null, optimize: null, compact: null, trim: null };
+    this.versions = emptyVersions();
     this.active = "edit";
     this.selected = null;
     this.selectedWire = null;
@@ -1550,7 +1558,7 @@ export class App {
     this.project = new Project({ cols, rows });
     this.fileName = null;
     // A new board invalidates every cached result tab.
-    this.versions = { solve: null, optimize: null, compact: null, trim: null };
+    this.versions = emptyVersions();
     this.active = "edit";
     this._syncSizeInputs();
     this.selected = null;
@@ -1664,7 +1672,7 @@ export class App {
     document.getElementById("rows").value = this.project.rows;
     // A freshly opened board invalidates every cached result tab (Solve/Trim/...) and returns
     // to the Edit tab, so a stale result from the previous board can never be shown.
-    this.versions = { solve: null, optimize: null, compact: null, trim: null };
+    this.versions = emptyVersions();
     this.active = "edit";
     this.selected = null;
     this.pending = null;
@@ -2068,6 +2076,7 @@ export class App {
         if (evt.shiftKey) {
           if (lower === "o") return evt.preventDefault(), this.optimize();
           if (lower === "c") return evt.preventDefault(), this.compact();
+          if (lower === "e") return evt.preventDefault(), this.easy();
           if (lower === "t") return evt.preventDefault(), this.trim();
           if (lower === "z") return evt.preventDefault(), this.redo();
           if (lower === "s") return evt.preventDefault(), this.saveAs();
