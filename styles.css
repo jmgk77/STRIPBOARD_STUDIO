@@ -207,6 +207,10 @@ dialog pre {
   cursor: pointer;
 }
 .chip.sel { border-color: #2a9d5f; background: #24402c; color: #d6f5e0; }
+.chip:hover { border-color: var(--accent); }
+
+.hoverable { transition: filter 0.08s ease; }
+.hoverable:hover { filter: drop-shadow(0 0 3px rgba(76, 154, 255, 0.9)); }
 .chipx {
   border: none;
   background: transparent;

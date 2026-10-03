@@ -40,6 +40,22 @@ export class App {
     this.render();
   }
 
+  /** The set of nets currently in focus, derived from the one primary selection. */
+  _focusedNets() {
+    const set = new Set();
+    if (this.selectedNet) set.add(this.selectedNet);
+    else if (this.selectedWire?.kind === "jumper") {
+      const j = this.project.jumpers[this.selectedWire.i];
+      if (j?.net) set.add(j.net);
+    } else if (this.selected) {
+      const ref = this.selected;
+      for (const net of this.project.nets) {
+        if ([...net.pins].some((k) => splitPin(k).ref === ref)) set.add(net.id);
+      }
+    }
+    return set;
+  }
+
   _syncSizeInputs() {
     document.getElementById("cols").value = this.project.cols;
     document.getElementById("rows").value = this.project.rows;
@@ -59,6 +75,7 @@ export class App {
       showNames: this.showNames,
       selectedNet: this.selectedNet,
       selectedWire: this.selectedWire,
+      focusNets: this._focusedNets(),
       layers: this.layers,
       issues: this.issues,
     });
@@ -90,9 +107,10 @@ export class App {
     const ordered = [...this.project.nets].sort((a, b) =>
       (a.label || a.id).localeCompare(b.label || b.id, undefined, { numeric: true }),
     );
+    const focus = this._focusedNets();
     for (const net of ordered) {
       const row = document.createElement("div");
-      row.className = "item" + (this.selectedNet === net.id ? " active" : "");
+      row.className = "item" + (focus.has(net.id) ? " active" : "");
 
       const head = document.createElement("div");
       head.className = "nethead";
@@ -133,13 +151,18 @@ export class App {
       for (const key of [...net.pins].sort()) {
         const ref = splitPin(key).ref;
         const chip = document.createElement("span");
-        chip.className = "chip" + (ref === this.selected || this.selectedNet === net.id ? " sel" : "");
+        chip.className = "chip" + (ref === this.selected || focus.has(net.id) ? " sel" : "");
         chip.title = "click to select this component";
         chip.appendChild(document.createTextNode(pinLabel(this.project, key)));
         chip.addEventListener("click", (e) => {
           e.stopPropagation();
-          this.selected = ref;
-          this.selectedNet = net.id;
+          if (this.selected === ref) {
+            this.selected = null;
+          } else {
+            this.selected = ref;
+            this.selectedWire = null;
+            this.selectedNet = null;
+          }
           this.render();
         });
         const x = document.createElement("button");
@@ -158,8 +181,14 @@ export class App {
       }
       row.appendChild(pins);
       row.addEventListener("click", (e) => {
-        if (e.target.closest("input,button")) return;
-        this.selectedNet = this.selectedNet === net.id ? null : net.id;
+        if (e.target.closest("input,button,span.chip")) return;
+        if (this.selectedNet === net.id) {
+          this.selectedNet = null;
+        } else {
+          this.selected = null;
+          this.selectedWire = null;
+          this.selectedNet = net.id;
+        }
         this.render();
       });
       box.appendChild(row);
@@ -183,12 +212,17 @@ export class App {
       item.appendChild(document.createTextNode(" " + issue.message));
       item.title = "click to highlight";
       item.addEventListener("click", () => {
-        this.selected = null;
-        this.selectedWire = null;
-        if (issue.netId) this.selectedNet = issue.netId;
-        else if (issue.netIds?.length) this.selectedNet = issue.netIds[0];
-        else if (issue.ref) this.selected = issue.ref;
-        else if (issue.refs?.length) this.selected = issue.refs[0];
+        const netId = issue.netId ?? issue.netIds?.[0] ?? null;
+        const ref = issue.ref ?? issue.refs?.[0] ?? null;
+        if (netId) {
+          this.selectedNet = this.selectedNet === netId ? null : netId;
+          this.selected = null;
+          this.selectedWire = null;
+        } else if (ref) {
+          this.selected = this.selected === ref ? null : ref;
+          this.selectedNet = null;
+          this.selectedWire = null;
+        }
         this.render();
       });
       box.appendChild(item);
@@ -200,7 +234,13 @@ export class App {
     box.innerHTML = "";
     const comp = this.selected ? this.project.components.get(this.selected) : null;
     if (!comp) {
-      box.textContent = this.pending ? `connect: ${this.pending} — click another pin` : "(none)";
+      if (this.pending) box.textContent = `connect: ${this.pending} — click another pin`;
+      else if (this.selectedNet) {
+        const net = this.project.nets.find((n) => n.id === this.selectedNet);
+        box.textContent = `net ${net?.label || this.selectedNet} selected`;
+      } else {
+        box.textContent = "(none)";
+      }
       return;
     }
     const part = LIBRARY.get(comp.part);
@@ -471,7 +511,15 @@ export class App {
       this._afterStructuralChange(false);
       return;
     }
-    if (!this.selected) return;
+    if (!this.selected) {
+      if (this.selectedNet) {
+        this.snapshot();
+        this.project.nets = this.project.nets.filter((n) => n.id !== this.selectedNet);
+        this.selectedNet = null;
+        this._afterStructuralChange(false);
+      }
+      return;
+    }
     this.snapshot();
     this.project.removeComponent(this.selected);
     this.selected = null;
@@ -773,7 +821,7 @@ export class App {
         const already = this.selectedWire?.kind === "jumper" && this.selectedWire.i === i;
         if (!already) {
           this.selected = null;
-          this.selectedNet = jumper?.net ?? null; // clicking a jumper highlights its net
+          this.selectedNet = null; // the jumper's net is derived from the selection
           this.selectedWire = { kind: "jumper", i };
         }
         this.wireDrag = { kind: "jumper", i, before: JSON.stringify(this.project.toJSON()), moved: false, wasSelected: already };
@@ -922,6 +970,7 @@ export class App {
       if (typing) return;
       if (evt.key === "Escape") {
         this.pending = null;
+        this.selected = null;
         this.selectedWire = null;
         this.selectedNet = null;
         this.render();

@@ -46,7 +46,7 @@ export function makeMapper(state) {
 
 export function render(svg, state) {
   const { project, library, view, selected, pending, solved, showNames = true } = state;
-  const selectedNet = state.selectedNet ?? null;
+  const focusNets = state.focusNets ?? new Set();
   const selectedWire = state.selectedWire ?? null;
   const L = state.layers ?? { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
   const { sx, sy } = makeMapper(state);
@@ -85,7 +85,7 @@ export function render(svg, state) {
         if (id) nets.add(id);
       }
       const fill = nets.size === 1 ? colors.get([...nets][0]) : "#c48a3e";
-      const lit = selectedNet && nets.has(selectedNet);
+      const lit = [...nets].some((id) => focusNets.has(id));
       const x1 = sx(a);
       const x2 = sx(b);
       el("rect", {
@@ -100,7 +100,7 @@ export function render(svg, state) {
       if (nets.size === 1 && b - a >= 1) {
         const id = [...nets][0];
         const net = netById.get(id);
-        const text = net?.label || (selectedNet === id ? net?.id : null);
+        const text = net?.label || (focusNets.has(id) ? net?.id : null);
         if (text) {
           el("text", {
             x: (x1 + x2) / 2, y: sy(y) + 3, "text-anchor": "middle", "font-size": 9,
@@ -139,8 +139,8 @@ export function render(svg, state) {
     const y1 = sy(j.ya);
     const y2 = sy(j.yb);
     const sel = selectedWire?.kind === "jumper" && selectedWire.i === i;
-    const lit = sel || (selectedNet && j.net === selectedNet);
-    const g = el("g", { "data-wire": i, class: "wire" }, svg);
+    const lit = sel || focusNets.has(j.net);
+    const g = el("g", { "data-wire": i, class: "wire hoverable", cursor: "pointer" }, svg);
     el("line", { x1: x, y1, x2: x, y2, stroke: "transparent", "stroke-width": 16 }, g);
     if (j.fixed) el("line", { x1: x, y1, x2: x, y2, stroke: "#ffffff", "stroke-width": 6, "stroke-linecap": "round", opacity: 0.9 }, g);
     el("line", { x1: x, y1, x2: x, y2, stroke: lit ? "#ffd54a" : "#4c9aff", "stroke-width": sel ? 4.5 : 3, "stroke-linecap": "round" }, g);
@@ -148,7 +148,7 @@ export function render(svg, state) {
       el("circle", { cx: x, cy, r: 6, fill: lit ? "#ffd54a" : "#4c9aff", stroke: "#0b2b52", "stroke-width": 1.5 }, g);
     }
     const net = netById.get(j.net);
-    const text = net?.label || (selectedNet === j.net ? net?.id : null);
+    const text = net?.label || (focusNets.has(j.net) ? net?.id : null);
     if (text) el("text", { x: x + 8, y: (y1 + y2) / 2 + 3, "font-size": 9, fill: "#123", "pointer-events": "none" }, g).textContent = text;
   });
 
@@ -168,7 +168,7 @@ export function render(svg, state) {
     const cy = sy(y);
     const r = HOLE_R + 3;
     const sel = selectedWire?.kind === "cut" && selectedWire.key === c;
-    const g = el("g", { "data-cut": c, class: "cut" }, svg);
+    const g = el("g", { "data-cut": c, class: "cut hoverable", cursor: "pointer" }, svg);
     el("rect", { x: cx - r - 5, y: cy - r - 5, width: 2 * (r + 5), height: 2 * (r + 5), fill: "transparent" }, g);
     if (project.fixedCuts?.has(c)) el("circle", { cx, cy, r: r + 3, fill: "#ffffff", opacity: 0.9 }, g);
     el("line", { x1: cx - r, y1: cy - r, x2: cx + r, y2: cy + r, stroke: sel ? "#ffd54a" : "#ff5555", "stroke-width": sel ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
@@ -215,10 +215,10 @@ function drawCutBorder(svg, state, sx, sy) {
 
 function drawRatsnest(svg, state, sx, sy, colors) {
   const { project, library } = state;
-  const selectedNet = state.selectedNet ?? null;
+  const focusNets = state.focusNets ?? new Set();
   for (const net of project.nets) {
-    const sel = net.id === selectedNet;
-    const dim = selectedNet != null && !sel;
+    const sel = focusNets.has(net.id);
+    const dim = focusNets.size > 0 && !sel;
     const pts = [];
     for (const key of net.pins) {
       const { ref, pin } = splitPin(key);
@@ -249,7 +249,7 @@ function drawRatsnest(svg, state, sx, sy, colors) {
 
 function drawComponent(svg, comp, part, state, sx, sy, colors) {
   const { project, selected, pending } = state;
-  const selectedNet = state.selectedNet ?? null;
+  const focusNets = state.focusNets ?? new Set();
   const isSel = selected === comp.ref;
   const wired = part.pins.some((p) => project.netOf(`${comp.ref}.${p.id}`));
   const pts = componentPins(comp, part).map((p) => ({ id: p.id, X: sx(p.x), Y: sy(p.y), cx: p.x, cy: p.y }));
@@ -277,7 +277,7 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
     by1 = Math.max(...ys) + CELL * 0.45;
   }
 
-  const g = el("g", { "data-ref": comp.ref, class: "component" }, svg);
+  const g = el("g", { "data-ref": comp.ref, class: "component hoverable", cursor: "pointer" }, svg);
   el("rect", {
     x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0, rx: 5,
     fill: isSel && wired ? "#cfe9cf" : "#f0efe9", "fill-opacity": 0.5,
@@ -292,7 +292,7 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
   for (const p of pts) {
     const isPending = pending && pending === `${comp.ref}.${p.id}`;
     const net = project.netOf(`${comp.ref}.${p.id}`);
-    const inSelNet = selectedNet && net && net.id === selectedNet;
+    const inSelNet = net && focusNets.has(net.id);
     const lit = isPending || inSelNet || (isSel && net);
     el("circle", {
       cx: p.X, cy: p.Y, r: isPending ? 6.5 : lit ? 6 : 4.5,
@@ -317,7 +317,7 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
 
   // ... and a big invisible hit target on top, so pins are easy to click (and highlight)
   for (const p of pts) {
-    el("circle", { "data-ref": comp.ref, "data-pin": p.id, cx: p.X, cy: p.Y, r: 11, fill: "transparent" }, g);
+    el("circle", { "data-ref": comp.ref, "data-pin": p.id, cx: p.X, cy: p.Y, r: 11, fill: "transparent", cursor: "pointer" }, g);
   }
 }
 
