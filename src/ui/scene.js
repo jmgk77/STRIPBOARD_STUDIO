@@ -185,6 +185,13 @@ export function render(svg, state) {
 
   drawCutBorder(svg, state, sx, sy);
 
+  // resize handles on the right and bottom edges (component side only)
+  if (view !== "copper") {
+    const edge = PAD - CELL / 2;
+    el("rect", { "data-handle": "right", x: edge + cols * CELL, y: edge, width: 12, height: rows * CELL, rx: 3, fill: "#4c9aff", "fill-opacity": 0.35, stroke: "#4c9aff", cursor: "ew-resize" }, svg);
+    el("rect", { "data-handle": "bottom", x: edge, y: edge + rows * CELL, width: cols * CELL, height: 12, rx: 3, fill: "#4c9aff", "fill-opacity": 0.35, stroke: "#4c9aff", cursor: "ns-resize" }, svg);
+  }
+
   if (view === "copper") {
     el("text", { x: width / 2, y: 22, "text-anchor": "middle", fill: "#ff6b6b", "font-size": 18, "font-weight": 700 }, svg).textContent = "COPPER SIDE (mirrored)";
   }

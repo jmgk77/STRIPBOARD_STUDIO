@@ -30,16 +30,6 @@
     <button id="compact">Compact</button>
     <button id="trim">Trim board</button>
     <button id="ascii">Text</button>
-    <label class="check"><input type="checkbox" id="copper"> copper side</label>
-    <label class="check"><input type="checkbox" id="names" checked> pin names</label>
-    <span class="sep"></span>
-    <span class="muted">layers:</span>
-    <label class="check"><input type="checkbox" id="lc-parts" checked> parts</label>
-    <label class="check"><input type="checkbox" id="lc-wires" checked> wires</label>
-    <label class="check"><input type="checkbox" id="lc-cuts" checked> cuts</label>
-    <label class="check"><input type="checkbox" id="lc-copper" checked> copper</label>
-    <label class="check"><input type="checkbox" id="lc-nets" checked> nets</label>
-    <label class="check"><input type="checkbox" id="lc-grid" checked> grid5</label>
     <span id="status" class="status"></span>
   </header>
   <main>
@@ -47,15 +37,33 @@
       <h3>Parts</h3>
       <button id="newPart" class="wide">+ New pin bar</button>
       <div id="palette-list" class="list"></div>
+
+      <h3>Layers</h3>
+      <label class="check"><input type="checkbox" id="lc-parts" checked> parts</label>
+      <label class="check"><input type="checkbox" id="lc-wires" checked> wires</label>
+      <label class="check"><input type="checkbox" id="lc-cuts" checked> cuts</label>
+      <label class="check"><input type="checkbox" id="lc-copper" checked> copper</label>
+      <label class="check"><input type="checkbox" id="lc-nets" checked> nets</label>
+      <label class="check"><input type="checkbox" id="lc-grid" checked> grid 5x5</label>
+      <label class="check"><input type="checkbox" id="copper"> copper side</label>
+      <label class="check"><input type="checkbox" id="names" checked> pin names</label>
     </aside>
     <div id="canvasWrap"><svg id="board" xmlns="http://www.w3.org/2000/svg"></svg></div>
     <aside id="panel">
-      <h3>Selection</h3>
-      <div id="selection" class="box">(none)</div>
-      <h3>Nets</h3>
-      <div id="nets" class="list"></div>
-      <h3>Problems</h3>
-      <div id="problems" class="list"></div>
+      <div class="tabbar">
+        <button class="tab active" data-tab="props">Properties</button>
+        <button class="tab" data-tab="nets">Nets</button>
+        <button class="tab" data-tab="problems">Problems</button>
+      </div>
+      <div class="tabpane" id="pane-props">
+        <div id="selection" class="box">(none)</div>
+      </div>
+      <div class="tabpane hidden" id="pane-nets">
+        <div id="nets" class="list"></div>
+      </div>
+      <div class="tabpane hidden" id="pane-problems">
+        <div id="problems" class="list"></div>
+      </div>
     </aside>
   </main>
   <input type="file" id="file" accept=".json,application/json" hidden>

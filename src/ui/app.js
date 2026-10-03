@@ -6,7 +6,7 @@ import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } 
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
 import { optimize as optimizeLayout, COMPACT_WEIGHTS } from "../core/optimize.js";
-import { contentBounds } from "../core/geometry.js";
+import { contentBounds, rotateLocal } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
 import { render, CELL, PAD } from "./scene.js";
 
@@ -32,6 +32,8 @@ export class App {
     this.redoStack = [];
     this.drag = null;
     this.wireDrag = null;
+    this.spanDrag = null;
+    this.boardResize = null;
 
     this._bindToolbar();
     this._bindBoard();
@@ -480,13 +482,13 @@ export class App {
     this._status(`created ${label} (${count} ${doubleRow ? "x2" : ""} pins)`);
   }
 
-  rotateSelected() {
+  rotateSelected(dir = 1) {
     const comp = this.selected && this.project.components.get(this.selected);
     if (!comp) return;
     const part = LIBRARY.get(comp.part);
     if (part && part.rotatable === false) return;
     this.snapshot();
-    comp.rot = (comp.rot + 90) % 360;
+    comp.rot = (comp.rot + 90 * dir + 360) % 360;
     this._afterStructuralChange();
   }
 
@@ -790,6 +792,16 @@ export class App {
     document.getElementById("copper").addEventListener("change", (e) => this.setView(e.target.checked));
     document.getElementById("cols").addEventListener("change", () => this.setBoardSize(Number(document.getElementById("cols").value), this.project.rows));
     document.getElementById("rows").addEventListener("change", () => this.setBoardSize(this.project.cols, Number(document.getElementById("rows").value)));
+
+    const tabs = [...document.querySelectorAll(".tabbar .tab")];
+    for (const tab of tabs) {
+      tab.addEventListener("click", () => {
+        for (const x of tabs) x.classList.toggle("active", x === tab);
+        for (const pane of document.querySelectorAll(".tabpane")) {
+          pane.classList.toggle("hidden", pane.id !== `pane-${tab.dataset.tab}`);
+        }
+      });
+    }
   }
 
   _cellAt(evt) {
@@ -809,6 +821,29 @@ export class App {
       // input is destroyed before its change event fires and the edit is lost).
       const active = document.activeElement;
       if (active && ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName)) active.blur();
+
+      const handleEl = evt.target.closest("[data-handle]");
+      if (handleEl) {
+        this.boardResize = { axis: handleEl.dataset.handle, before: JSON.stringify(this.project.toJSON()), moved: false };
+        this.svg.setPointerCapture(evt.pointerId);
+        return;
+      }
+      // Alt+drag a bendable part's lead to change its span
+      if (evt.altKey && this.mode === "select") {
+        const el = evt.target.closest("[data-ref]");
+        const comp = el && this.project.components.get(el.dataset.ref);
+        const part = comp && LIBRARY.get(comp.part);
+        if (comp && part?.bendable) {
+          this.selected = comp.ref;
+          this.selectedWire = null;
+          this.selectedNet = null;
+          this.spanDrag = { ref: comp.ref, before: JSON.stringify(this.project.toJSON()), moved: false };
+          this.svg.setPointerCapture(evt.pointerId);
+          this.render();
+          return;
+        }
+      }
+
       const pinEl = evt.target.closest("[data-pin]");
       if (pinEl && this.mode === "connect") {
         this.handlePinClick(`${pinEl.dataset.ref}.${pinEl.dataset.pin}`);
@@ -879,6 +914,28 @@ export class App {
     });
 
     this.svg.addEventListener("pointermove", (evt) => {
+      if (this.boardResize) {
+        const cell = this._cellAt(evt);
+        if (this.boardResize.axis === "right") this.project.cols = Math.max(4, Math.min(100, cell.x));
+        else this.project.rows = Math.max(4, Math.min(60, cell.y));
+        this._syncSizeInputs();
+        this.boardResize.moved = true;
+        this.render();
+        return;
+      }
+      if (this.spanDrag) {
+        const comp = this.project.components.get(this.spanDrag.ref);
+        const part = comp && LIBRARY.get(comp.part);
+        if (comp && part?.bendable) {
+          const cell = this._cellAt(evt);
+          const step = rotateLocal(0, 1, comp.rot || 0);
+          const span = Math.round((cell.x - comp.x) * step.x + (cell.y - comp.y) * step.y);
+          comp.span = Math.max(part.bendable.min, Math.min(part.bendable.max, span));
+          this.spanDrag.moved = true;
+          this.render();
+        }
+        return;
+      }
       if (this.wireDrag) {
         const cell = this._cellAt(evt);
         const x = Math.max(1, Math.min(this.project.cols, cell.x));
@@ -925,6 +982,24 @@ export class App {
     });
 
     this.svg.addEventListener("pointerup", () => {
+      if (this.boardResize) {
+        const d = this.boardResize;
+        this.boardResize = null;
+        if (d.moved) {
+          this.pushHistory(d.before);
+          this._afterStructuralChange(true);
+        }
+        return;
+      }
+      if (this.spanDrag) {
+        const d = this.spanDrag;
+        this.spanDrag = null;
+        if (d.moved) {
+          this.pushHistory(d.before);
+          this._afterStructuralChange(true);
+        }
+        return;
+      }
       if (this.wireDrag) {
         const d = this.wireDrag;
         this.wireDrag = null;
@@ -964,26 +1039,53 @@ export class App {
     });
   }
 
+  _clearSelection() {
+    this.pending = null;
+    this.selected = null;
+    this.selectedWire = null;
+    this.selectedNet = null;
+    this.render();
+  }
+
+  _nudgeSelected(evt) {
+    const comp = this.selected && this.project.components.get(this.selected);
+    if (!comp) return;
+    const dx = evt.key === "ArrowLeft" ? -1 : evt.key === "ArrowRight" ? 1 : 0;
+    const dy = evt.key === "ArrowUp" ? -1 : evt.key === "ArrowDown" ? 1 : 0;
+    this.snapshot();
+    comp.x = Math.max(1, Math.min(this.project.cols, comp.x + dx));
+    comp.y = Math.max(1, Math.min(this.project.rows, comp.y + dy));
+    this._afterStructuralChange();
+  }
+
   _bindKeyboard() {
     document.addEventListener("keydown", (evt) => {
-      const typing = ["INPUT", "TEXTAREA"].includes(evt.target.tagName);
-      if (typing) return;
-      if (evt.key === "Escape") {
-        this.pending = null;
-        this.selected = null;
-        this.selectedWire = null;
-        this.selectedNet = null;
-        this.render();
-      } else if (evt.key.toLowerCase() === "r") {
-        this.rotateSelected();
-      } else if (evt.key.toLowerCase() === "l") {
-        this.lockSelected();
-      } else if (evt.key === "Delete" || evt.key === "Backspace") {
-        this.deleteSelected();
-      } else if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === "z") {
-        evt.preventDefault();
-        this.undo();
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(evt.target.tagName)) return;
+      const key = evt.key;
+      const lower = key.length === 1 ? key.toLowerCase() : key;
+      const mod = evt.ctrlKey || evt.metaKey;
+      if (mod) {
+        if (evt.shiftKey) {
+          if (lower === "o") return evt.preventDefault(), this.optimize();
+          if (lower === "c") return evt.preventDefault(), this.compact();
+          if (lower === "t") return evt.preventDefault(), this.trim();
+          if (lower === "z") return evt.preventDefault(), this.redo();
+        }
+        if (lower === "z") return evt.preventDefault(), this.undo();
+        if (lower === "y") return evt.preventDefault(), this.redo();
+        if (lower === "s") return evt.preventDefault(), this.save();
+        if (lower === "o") return evt.preventDefault(), document.getElementById("file").click();
+        if (lower === "n") return evt.preventDefault(), this.newProject();
+        if (lower === "r") return evt.preventDefault(), this.solve();
+        return;
       }
+      if (key === "Escape") return this._clearSelection();
+      if (key === "Delete" || key === "Backspace") return this.deleteSelected();
+      if (key.startsWith("Arrow")) return this._nudgeSelected(evt);
+      if (lower === "v") return this.setMode("select");
+      if (lower === "c") return this.setMode("connect");
+      if (lower === "r") return this.rotateSelected(evt.shiftKey ? -1 : 1);
+      if (lower === "l") return this.lockSelected();
     });
   }
 
