@@ -804,12 +804,16 @@ export class App {
         return;
       }
       const ref = compEl.dataset.ref;
-      this.selected = ref;
-      this.selectedWire = null;
-      this.selectedNet = null;
+      const already = this.selected === ref;
+      if (!already) {
+        this.selected = ref;
+        this.selectedWire = null;
+        this.selectedNet = null;
+      }
       const comp = this.project.components.get(ref);
       if (comp.locked) {
-        // locked = fixed: select it, but do not drag it
+        // locked = fixed: no drag; a second click toggles the selection off
+        if (already) this.selected = null;
         this.render();
         return;
       }
@@ -819,6 +823,8 @@ export class App {
         originX: comp.x,
         originY: comp.y,
         before: JSON.stringify(this.project.toJSON()),
+        moved: false,
+        wasSelected: already,
       };
       this.svg.setPointerCapture(evt.pointerId);
       this.render();
@@ -862,8 +868,11 @@ export class App {
       const comp = this.project.components.get(this.drag.ref);
       const dx = cell.x - this.drag.start.x;
       const dy = cell.y - this.drag.start.y;
-      comp.x = Math.max(1, Math.min(this.project.cols, this.drag.originX + dx));
-      comp.y = Math.max(1, Math.min(this.project.rows, this.drag.originY + dy));
+      const nx = Math.max(1, Math.min(this.project.cols, this.drag.originX + dx));
+      const ny = Math.max(1, Math.min(this.project.rows, this.drag.originY + dy));
+      if (nx !== comp.x || ny !== comp.y) this.drag.moved = true;
+      comp.x = nx;
+      comp.y = ny;
       this.render();
     });
 
@@ -891,9 +900,17 @@ export class App {
         return;
       }
       if (!this.drag) return;
-      const { ref, before, originX, originY } = this.drag;
+      const { ref, before, originX, originY, moved, wasSelected } = this.drag;
       const comp = this.project.components.get(ref);
       this.drag = null;
+      if (!moved) {
+        // a plain click: toggle the selection back off if it was already selected
+        if (wasSelected) {
+          this.selected = null;
+          this.render();
+        }
+        return;
+      }
       if (comp.x !== originX || comp.y !== originY) this.pushHistory(before);
       this._afterStructuralChange();
     });
