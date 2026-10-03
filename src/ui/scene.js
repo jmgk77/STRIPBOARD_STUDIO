@@ -158,6 +158,21 @@ export function render(svg, state) {
     }
   }
 
+  // mounting holes: drilled through, larger than a normal hole, no copper (a screw goes here)
+  const mountR = ((project.mountDiameter ?? 3.2) / 2 / 2.54) * CELL;
+  for (const c of project.mountingHoles ?? []) {
+    const [x, y] = c.split(",").map(Number);
+    const cx = sx(x);
+    const cy = sy(y);
+    const sel = selectedWire?.kind === "mount" && selectedWire.key === c;
+    const g = el("g", { "data-mount": c, class: "mount hoverable", cursor: "pointer" }, svg);
+    el("circle", { cx, cy, r: mountR + 4, fill: "transparent" }, g); // generous hit target
+    el("circle", { cx, cy, r: mountR, fill: C.hole, stroke: sel ? C.sel : C.cut, "stroke-width": sel ? 3.5 : 2.5, "pointer-events": "none" }, g);
+    const k = mountR * 0.72;
+    el("line", { x1: cx - k, y1: cy, x2: cx + k, y2: cy, stroke: sel ? C.sel : C.cut, "stroke-width": 2, "pointer-events": "none" }, g);
+    el("line", { x1: cx, y1: cy - k, x2: cx, y2: cy + k, stroke: sel ? C.sel : C.cut, "stroke-width": 2, "pointer-events": "none" }, g);
+  }
+
   // ratsnest (intended wiring) only while unsolved
   if (!solved && L.nets !== false) drawRatsnest(svg, state, sx, sy, colors);
 

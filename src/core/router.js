@@ -112,6 +112,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
       }
     }
   }
+  const mountBlock = project.mountingHoles ?? new Set(); // drilled holes: no copper, no jumper end
   const owner = new Map(); // cell -> net id (copper)
   const arc = new Map(); // cell -> net id (jumper clearance)
   const jumperEnds = new Set();
@@ -130,6 +131,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
     if (x < 1 || x > cols || y < 1 || y > rows) return false;
     const c = cellId(x, y);
     if (fixedCuts.has(c)) return false; // a user cut breaks the copper here
+    if (mountBlock.has(c)) return false; // a mounting hole removes the copper
     if (pinAt.has(c) && pinAt.get(c) !== net) return false;
     if (owner.has(c) && owner.get(c) !== net) return false;
     for (const nx of [x - 1, x + 1]) {
@@ -388,7 +390,7 @@ function deriveCuts(project, owner, pinAt, diagnostics, removedCuts = new Set())
         for (const cand of [mid - d, mid + d]) {
           if (cand > a.x && cand < b.x) {
             const c = cellId(cand, y);
-            if (!pinAt.has(c) && !owner.has(c) && !removedCuts.has(c)) {
+            if (!pinAt.has(c) && !owner.has(c) && !removedCuts.has(c) && !project.mountingHoles?.has(c)) {
               placed = c;
               break;
             }

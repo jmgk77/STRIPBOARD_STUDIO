@@ -43,6 +43,11 @@ export function toAscii(project, library, { margin = 1 } = {}) {
       if (p) grid[p.cy][p.cx] = "|";
     }
   }
+  for (const c of project.mountingHoles ?? []) {
+    const [x, y] = c.split(",").map(Number);
+    const p = at(x, y);
+    if (p) grid[p.cy][p.cx] = "M";
+  }
   for (const comp of project.components.values()) {
     const part = library.get(comp.part);
     if (!part) continue;
@@ -70,7 +75,7 @@ export function toAscii(project, library, { margin = 1 } = {}) {
   }
 
   lines.push("");
-  lines.push("legend:  - copper strip   x cut   o jumper end   | jumper arc");
+  lines.push("legend:  - copper strip   x cut   o jumper end   | jumper arc   M mounting hole");
   lines.push("");
   lines.push("components:");
   for (const comp of project.components.values()) {
@@ -99,6 +104,9 @@ export function toAscii(project, library, { margin = 1 } = {}) {
   );
   lines.push(
     `jumpers: ${project.jumpers.map((j) => `${cell(j.x, j.ya)}-${cell(j.x, j.yb)}`).join(" ") || "(none)"}`,
+  );
+  lines.push(
+    `mounting holes (Ø${project.mountDiameter ?? 3.2}mm): ${[...(project.mountingHoles ?? [])].sort().map((c) => { const [x, y] = c.split(",").map(Number); return cell(x, y); }).join(" ") || "(none)"}`,
   );
   return lines.join("\n");
 }

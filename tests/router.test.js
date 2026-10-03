@@ -72,6 +72,22 @@ test("a tombstoned jumper edge is not reused (delete stays deleted)", () => {
   assert.ok(!r2.jumpers.some((j) => key(j) === banned), `tombstoned jumper ${banned} came back`);
 });
 
+test("the router never derives a cut at a mounting hole", () => {
+  const p = new Project({ cols: 14, rows: 10 });
+  p.addComponent(new Component({ ref: "J1", part: "header4", x: 2, y: 2 }));
+  p.addComponent(new Component({ ref: "J2", part: "header4", x: 7, y: 2 }));
+  p.nets = [
+    new Net("A", [pinKey("J1", "1"), pinKey("J1", "4")]),
+    new Net("B", [pinKey("J2", "1"), pinKey("J2", "4")]),
+  ];
+  const r1 = route(p, LIBRARY);
+  const cut = [...r1.cuts].find((c) => c.endsWith(",2"));
+  assert.ok(cut, `expected a cut on row 2, got ${JSON.stringify([...r1.cuts])}`);
+  p.mountingHoles = new Set([cut]);
+  const r2 = route(p, LIBRARY);
+  assert.ok(!r2.cuts.has(cut), `the router cut at the mounting hole ${cut}`);
+});
+
 test("a fixed cut keeps the router from deriving another on that row", () => {
   const p = new Project({ cols: 12, rows: 6 });
   p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // (2,2)

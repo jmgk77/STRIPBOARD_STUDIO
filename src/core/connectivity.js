@@ -52,7 +52,8 @@ export function analyze(project, library) {
     const [x, y] = cell.split(",").map(Number);
     return at(x, y);
   };
-  const present = (x, y) => x >= 1 && x <= cols && y >= 1 && y <= rows && !project.cuts.has(cellId(x, y));
+  const mounts = project.mountingHoles ?? new Set(); // drilled screw holes: no copper
+  const present = (x, y) => x >= 1 && x <= cols && y >= 1 && y <= rows && !project.cuts.has(cellId(x, y)) && !mounts.has(cellId(x, y));
 
   const dsu = new DSU();
   for (let y = 1; y <= rows; y++) {
@@ -65,7 +66,9 @@ export function analyze(project, library) {
 
   for (const j of project.jumpers) {
     for (const [x, y] of [[j.x, j.ya], [j.x, j.yb]]) {
-      if (!present(x, y)) {
+      if (mounts.has(cellId(x, y))) {
+        issues.push({ level: "error", code: "mount-on-jumper-end", message: `jumper end ${at(x, y)} lands on a mounting hole` });
+      } else if (!present(x, y)) {
         issues.push({ level: "error", code: "jumper-off-copper", message: `jumper end ${at(x, y)} is off the board or on a cut` });
       }
     }
@@ -112,6 +115,9 @@ export function analyze(project, library) {
       if (project.cuts.has(cellId(p.x, p.y))) {
         issues.push({ level: "error", code: "pin-on-cut", ref: comp.ref, pin: p.id, message: `${key} sits on a cut at ${at(p.x, p.y)}` });
       }
+      if (mounts.has(cellId(p.x, p.y))) {
+        issues.push({ level: "error", code: "mount-on-pin", ref: comp.ref, pin: p.id, message: `${key} sits on a mounting hole at ${at(p.x, p.y)}` });
+      }
       pinNode.set(key, dsu.find(cellId(p.x, p.y)));
     }
   }
@@ -130,6 +136,13 @@ export function analyze(project, library) {
     }
     if (under) {
       issues.push({ level: "error", code: "jumper-under-body", message: `jumper ${at(j.x, lo)}-${at(j.x, hi)} runs under a component body` });
+    }
+  }
+
+  // A screw head / standoff needs room: warn when a mounting hole sits under a flush body.
+  for (const cell of mounts) {
+    if (flushBlock.has(cell)) {
+      issues.push({ level: "warn", code: "mount-under-body", message: `mounting hole ${atCell(cell)} is under a component body` });
     }
   }
 

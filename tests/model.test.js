@@ -84,6 +84,10 @@ test("JSON round-trips", () => {
   p.nets = [new Net("A", [pinKey("J1", "1")])];
   p.cuts = new Set(["5,5"]);
   p.jumpers = [{ x: 1, ya: 2, yb: 6 }];
+  p.removedCuts = new Set(["6,6"]);
+  p.removedJumpers = new Set(["2,3,7"]);
+  p.mountingHoles = new Set(["1,1"]);
+  p.mountDiameter = 3.2;
   const q = Project.fromJSON(p.toJSON());
   assert.deepEqual(q.toJSON(), p.toJSON());
 });

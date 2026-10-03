@@ -167,6 +167,10 @@ export function contentBounds(project, library) {
     const [x, y] = c.split(",").map(Number);
     hit(x, y);
   }
+  for (const c of project.mountingHoles ?? []) {
+    const [x, y] = c.split(",").map(Number);
+    hit(x, y);
+  }
   for (const j of project.jumpers) {
     hit(j.x, j.ya);
     hit(j.x, j.yb);

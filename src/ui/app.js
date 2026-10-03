@@ -388,6 +388,14 @@ export class App {
         ], !!fixed, ed);
         return;
       }
+      if (this.selectedWire?.kind === "mount") {
+        const [x, y] = this.selectedWire.key.split(",").map(Number);
+        this._wireBox(box, `Mounting hole · ${rowLabel(y, project.rows)}${x}`, [
+          `drill Ø${project.mountDiameter} mm (through-hole)`,
+          "the strip is cut here (no copper)",
+        ], false, ed, false);
+        return;
+      }
       if (this.selectedNet) {
         const net = project.nets.find((n) => n.id === this.selectedNet);
         box.textContent = `net ${net?.label || this.selectedNet} selected`;
@@ -623,7 +631,7 @@ export class App {
     this._status(`renamed ${old} to ${next}`);
   }
 
-  _wireBox(box, title, lines, fixed, ed = true) {
+  _wireBox(box, title, lines, fixed, ed = true, fixable = true) {
     box.innerHTML = "";
     const head = document.createElement("div");
     head.textContent = title;
@@ -636,18 +644,20 @@ export class App {
     }
     const row = document.createElement("div");
     row.className = "pinrow";
-    const fix = document.createElement("button");
-    fix.className = "minibtn";
-    fix.textContent = fixed ? "Unfix" : "Fix";
-    fix.title = fixed ? "release so Solve may change it" : "pin it so Solve keeps it";
-    fix.disabled = !ed;
-    fix.addEventListener("click", () => this.toggleFixSelected());
+    if (fixable) {
+      const fix = document.createElement("button");
+      fix.className = "minibtn";
+      fix.textContent = fixed ? "Unfix" : "Fix";
+      fix.title = fixed ? "release so Solve may change it" : "pin it so Solve keeps it";
+      fix.disabled = !ed;
+      fix.addEventListener("click", () => this.toggleFixSelected());
+      row.appendChild(fix);
+    }
     const del = document.createElement("button");
     del.className = "minibtn";
     del.textContent = "Delete";
     del.disabled = !ed;
     del.addEventListener("click", () => this.deleteSelected());
-    row.appendChild(fix);
     row.appendChild(del);
     box.appendChild(row);
   }
@@ -770,6 +780,8 @@ export class App {
           this.project.removedJumpers.add(`${j.x},${j.ya},${j.yb}`);
           this.project.jumpers.splice(w.i, 1);
         }
+      } else if (w.kind === "mount") {
+        this.project.mountingHoles.delete(w.key); // mounting holes are always user-made
       } else {
         this.project.cuts.delete(w.key);
         this.project.fixedCuts.delete(w.key);
@@ -826,19 +838,20 @@ export class App {
     if (mode === "connect") this._status("connect: click a first pin, then a second pin (Esc cancels)");
     else if (mode === "cut") this._status("cut tool: click a hole to cut that strip; click it again to remove the cut");
     else if (mode === "jumper") this._status("jumper tool: click a hole, then another in the same column (Esc cancels)");
+    else if (mode === "mount") this._status("mount tool: click a hole to place a chassis screw hole; click it again to remove it");
   }
 
   _syncModeButtons() {
-    const buttons = { connect: "connect", cut: "addCut", jumper: "addJumper" };
+    const buttons = { connect: "connect", cut: "addCut", jumper: "addJumper", mount: "addMount" };
     for (const [m, id] of Object.entries(buttons)) {
       const el = document.getElementById(id);
       if (el) el.classList.toggle("active", this.mode === m);
     }
   }
 
-  /** True when the mode is one of the manual "wire" tools (cut / jumper). */
+  /** True when the mode is one of the manual "board" tools (cut / jumper / mount). */
   _isToolMode() {
-    return this.mode === "cut" || this.mode === "jumper";
+    return this.mode === "cut" || this.mode === "jumper" || this.mode === "mount";
   }
 
   /** Human cell name (row letter + column), matching the Problems panel. */
@@ -869,6 +882,7 @@ export class App {
     const cell = this._cutCellAt(evt);
     if (!cell) return;
     if (this.mode === "cut") this._addCut(cell.x, cell.y);
+    else if (this.mode === "mount") this._toggleMount(cell.x, cell.y);
     else this._addJumperClick(cell.x, cell.y);
   }
 
@@ -896,6 +910,42 @@ export class App {
     this.project.removedCuts.delete(key);
     this._afterStructuralChange(false);
     this._status(`cut added at ${name} (fixed)`);
+  }
+
+  _toggleMount(x, y) {
+    const key = `${x},${y}`;
+    const name = this._cellName(x, y);
+    if (this.project.mountingHoles.has(key)) {
+      this.snapshot();
+      this.project.mountingHoles.delete(key);
+      this._afterStructuralChange(false);
+      this._status(`mounting hole removed at ${name}`);
+      return;
+    }
+    const bad = this._mountBlocker(x, y);
+    if (bad) {
+      this._status(`cannot place mounting hole: ${bad}`);
+      return;
+    }
+    this.snapshot();
+    this.project.mountingHoles.add(key);
+    this._afterStructuralChange(false);
+    this._status(`mounting hole added at ${name}`);
+  }
+
+  _mountBlocker(x, y) {
+    const pin = this._pinAt(x, y);
+    if (pin) return `${this._cellName(x, y)} has the pin ${pin}`;
+    for (const j of this.project.jumpers) {
+      if (j.x === x && (j.ya === y || j.yb === y)) return `a jumper ends at ${this._cellName(x, y)}`;
+    }
+    for (const comp of this.project.components.values()) {
+      const part = LIBRARY.get(comp.part);
+      if (!part || part.wiresUnder) continue;
+      const b = componentBody(comp, part);
+      if (b && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1) return `${comp.ref} covers ${this._cellName(x, y)}`;
+    }
+    return null;
   }
 
   _addJumperClick(x, y) {
@@ -952,6 +1002,7 @@ export class App {
       if (y !== lo && y !== hi && jumperEnds.has(cell)) return `another jumper already ends at ${this._cellName(x, y)}`;
     }
     if (jumperEnds.has(`${x},${lo}`) || jumperEnds.has(`${x},${hi}`)) return "a jumper already ends in that hole";
+    if (this.project.mountingHoles.has(`${x},${lo}`) || this.project.mountingHoles.has(`${x},${hi}`)) return "a mounting hole is in that hole";
     // No solder room under a flush body.
     for (const comp of this.project.components.values()) {
       const part = LIBRARY.get(comp.part);
@@ -1056,6 +1107,10 @@ export class App {
           c.x += dx;
           c.y += dy;
         }
+        clone.mountingHoles = new Set([...clone.mountingHoles].map((k) => {
+          const [x, y] = k.split(",").map(Number);
+          return `${x + dx},${y + dy}`;
+        }));
         clone.cols = b.x1 - b.x0 + 1;
         clone.rows = b.y1 - b.y0 + 1;
         clone.cuts = new Set();
@@ -1160,6 +1215,11 @@ export class App {
       return cell(x, y);
     }).join(" ") || "(none)";
     const jumperList = project.jumpers.map((j) => `${cell(j.x, j.ya)}-${cell(j.x, j.yb)} (${j.net || "?"})`).join("; ") || "(none)";
+    const mounts = project.mountingHoles ?? new Set();
+    const mountList = [...mounts].sort().map((c) => {
+      const [x, y] = c.split(",").map(Number);
+      return cell(x, y);
+    }).join(" ") || "(none)";
 
     const bom = new Map();
     for (const c of project.components.values()) {
@@ -1180,11 +1240,12 @@ export class App {
     const netRows = project.nets.map((n) => `${n.label || n.id}: ${[...n.pins].sort().join(", ")}`).join("\n") || "(none)";
     const steps = [
       `1. Print at 100% (no 'fit to page') for true scale. Board ${cols} x ${rows} holes = ${(cols * 2.54).toFixed(1)} x ${(rows * 2.54).toFixed(1)} mm. (Scale relies on the browser print dialog; a direct vector-PDF export is not built yet.)`,
-      `2. On the COPPER side, cut the tracks at: ${cutList}`,
-      `3. On the COPPER side, solder the jumpers: ${jumperList}`,
-      `4. On the COMPONENT side, insert and solder ${comps.length} part(s), mind orientation:`,
+      `2. Drill the mounting holes (Ø${project.mountDiameter} mm, through the board) at: ${mountList}`,
+      `3. On the COPPER side, cut the tracks at: ${cutList}`,
+      `4. On the COPPER side, solder the jumpers: ${jumperList}`,
+      `5. On the COMPONENT side, insert and solder ${comps.length} part(s), mind orientation:`,
       compRows,
-      `5. Final electrical check against the nets:`,
+      `6. Final electrical check against the nets:`,
       netRows,
     ].join("\n");
 
@@ -1198,6 +1259,7 @@ export class App {
 </head><body>
 <h3>Component side (1:1) — origin ${rowLetter(origin.row)}${origin.col}</h3><div class="page">${front.outerHTML}</div>
 <h3>Copper side, mirrored (1:1, no components)</h3><div class="page">${copper.outerHTML}</div>
+<h3>Mounting holes (${mounts.size}, Ø${project.mountDiameter} mm)</h3><pre>${mountList}</pre>
 <h3>Cuts (${project.cuts.size})</h3><pre>${cutList}</pre>
 <h3>Jumpers (${project.jumpers.length})</h3><pre>${jumperList}</pre>
 <h3>BOM</h3><pre>${bomRows}</pre>
@@ -1461,6 +1523,7 @@ export class App {
     on("connect", () => this.setMode(this.mode === "connect" ? "select" : "connect"));
     on("addCut", () => this.setMode(this.mode === "cut" ? "select" : "cut"));
     on("addJumper", () => this.setMode(this.mode === "jumper" ? "select" : "jumper"));
+    on("addMount", () => this.setMode(this.mode === "mount" ? "select" : "mount"));
     document.getElementById("names").addEventListener("change", (e) => {
       this.showNames = e.target.checked;
       this.render();
@@ -1594,6 +1657,16 @@ export class App {
           this.wireDrag = { kind: "cut", key, before: JSON.stringify(this.project.toJSON()), moved: false, wasSelected: already };
           this.svg.setPointerCapture(evt.pointerId);
         }
+        this.render();
+        return;
+      }
+      const mountEl = evt.target.closest("[data-mount]");
+      if (mountEl && this.mode === "select") {
+        const key = mountEl.dataset.mount;
+        const already = this.selectedWire?.kind === "mount" && this.selectedWire.key === key;
+        this.selected = null;
+        this.selectedNet = null;
+        this.selectedWire = already ? null : { kind: "mount", key };
         this.render();
         return;
       }
@@ -1833,7 +1906,7 @@ export class App {
 
   _solvedShown() {
     const p = this._shownProject();
-    return p.jumpers.length > 0 || p.cuts.size > 0;
+    return p.jumpers.length > 0 || p.cuts.size > 0 || (p.mountingHoles?.size ?? 0) > 0;
   }
 
   /** Run a heavy synchronous task with a visible "busy" state painted first. */

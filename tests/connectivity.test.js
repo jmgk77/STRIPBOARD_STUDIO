@@ -81,6 +81,34 @@ test("a jumper under a flush body is an error", () => {
   assert.ok(r.issues.some((i) => i.code === "jumper-under-body"), JSON.stringify(r.issues));
 });
 
+test("a mounting hole breaks the strip", () => {
+  const p = new Project({ cols: 12, rows: 6 });
+  p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // pin (2,2)
+  p.addComponent(new Component({ ref: "J2", part: "header2", x: 8, y: 2 })); // pin (8,2)
+  p.nets = [new Net("A", [pinKey("J1", "1"), pinKey("J2", "1")])];
+  assert.equal(analyze(p, LIBRARY).ok, true); // one strip: connected
+  p.mountingHoles = new Set(["5,2"]);
+  const r = analyze(p, LIBRARY);
+  assert.equal(r.ok, false);
+  assert.ok(r.unconnected.some((i) => i.code === "net-open"));
+});
+
+test("a pin on a mounting hole is an error", () => {
+  const p = new Project({ cols: 12, rows: 6 });
+  p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // pin (2,2)
+  p.mountingHoles = new Set(["2,2"]);
+  const r = analyze(p, LIBRARY);
+  assert.ok(r.issues.some((i) => i.code === "mount-on-pin" && i.level === "error"), JSON.stringify(r.issues));
+});
+
+test("a mounting hole under a flush body is a warning", () => {
+  const p = new Project({ cols: 12, rows: 8 });
+  p.addComponent(new Component({ ref: "D1", part: "dip8", x: 3, y: 3 })); // body x4-5, y3-6
+  p.mountingHoles = new Set(["4,4"]); // interior of the body, not a pin
+  const r = analyze(p, LIBRARY);
+  assert.ok(r.issues.some((i) => i.code === "mount-under-body" && i.level === "warn"), JSON.stringify(r.issues));
+});
+
 test("two jumpers sharing a hole is an error", () => {
   const p = base();
   p.jumpers = [

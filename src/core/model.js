@@ -66,6 +66,8 @@ export class Project {
     this.jumpers = []; // { x, ya, yb, net?, fixed? }
     this.removedCuts = new Set(); // "x,y" cells the user deleted; Solve must not re-cut them
     this.removedJumpers = new Set(); // "x,ya,yb" jumpers the user deleted; Solve must not re-add
+    this.mountingHoles = new Set(); // "x,y" cells drilled for a chassis screw (breaks copper)
+    this.mountDiameter = 3.2; // mm; drawn at true scale on the print sheet
     this.customParts = []; // specs of user-defined pin bars (see library.buildBarPart)
   }
 
@@ -167,6 +169,8 @@ export class Project {
       jumpers: this.jumpers.map((j) => ({ ...j })),
       removedCuts: [...this.removedCuts].sort(),
       removedJumpers: [...this.removedJumpers].sort(),
+      mountingHoles: [...this.mountingHoles].sort(),
+      mountDiameter: this.mountDiameter,
       customParts: this.customParts.map((p) => ({ ...p })),
     };
   }
@@ -186,6 +190,8 @@ export class Project {
     });
     p.removedCuts = new Set(o.removedCuts ?? []);
     p.removedJumpers = new Set(o.removedJumpers ?? []);
+    p.mountingHoles = new Set(o.mountingHoles ?? []);
+    p.mountDiameter = o.mountDiameter ?? 3.2;
     p.customParts = (o.customParts ?? []).map((s) => ({ ...s }));
     return p;
   }
