@@ -43,6 +43,7 @@ export class App {
     this.mode = "select";
     this.solved = false;
     this.showNames = true;
+    this.showConnections = false; // force the ratsnest on even after a board has routing
     this.selectedNet = null;
     this.selectedWire = null;
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
@@ -119,6 +120,7 @@ export class App {
       jumperStart: this.jumperStart,
       mode: this.mode,
       solved: project.jumpers.length > 0 || project.cuts.size > 0,
+      connections: this.showConnections,
       showNames: this.showNames,
       selectedNet: this.selectedNet,
       selectedWire: this.selectedWire,
@@ -1715,6 +1717,10 @@ export class App {
     on("addMount", () => this.setMode(this.mode === "mount" ? "select" : "mount"));
     document.getElementById("names").addEventListener("change", (e) => {
       this.showNames = e.target.checked;
+      this.render();
+    });
+    document.getElementById("connections").addEventListener("change", (e) => {
+      this.showConnections = e.target.checked;
       this.render();
     });
     document.getElementById("schematic").addEventListener("change", (e) => {

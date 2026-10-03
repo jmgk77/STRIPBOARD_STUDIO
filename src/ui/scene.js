@@ -161,8 +161,8 @@ export function render(svg, state) {
     }
   }
 
-  // ratsnest (intended wiring) only while unsolved
-  if (!solved && L.nets !== false) drawRatsnest(svg, state, sx, sy, colors);
+  // ratsnest (intended wiring): shown while unsolved, or always when the user asks for it
+  if ((!solved || state.connections === true) && L.nets !== false) drawRatsnest(svg, state, sx, sy, colors);
 
   // jumpers (clickable/draggable)
   (L.wires === false ? [] : project.jumpers).forEach((j, i) => {
