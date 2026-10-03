@@ -125,11 +125,29 @@ export class App {
       row.appendChild(head);
 
       const pins = document.createElement("div");
-      pins.className = "netpins muted";
-      pins.textContent = `${net.pins.size}: ${[...net.pins].sort().map((k) => pinLabel(this.project, k)).join(", ")}`;
+      pins.className = "netpins";
+      if (net.pins.size === 0) pins.innerHTML = '<span class="muted">(no pins)</span>';
+      for (const key of [...net.pins].sort()) {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.appendChild(document.createTextNode(pinLabel(this.project, key)));
+        const x = document.createElement("button");
+        x.className = "chipx";
+        x.textContent = "✕";
+        x.title = "remove this pin from the net";
+        x.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.snapshot();
+          net.pins.delete(key);
+          if (net.pins.size === 0) this.project.nets = this.project.nets.filter((n) => n !== net);
+          this._afterStructuralChange(true);
+        });
+        chip.appendChild(x);
+        pins.appendChild(chip);
+      }
       row.appendChild(pins);
       row.addEventListener("click", (e) => {
-        if (e.target.tagName === "INPUT" || e.target.tagName === "BUTTON") return;
+        if (e.target.closest("input,button")) return;
         this.selectedNet = this.selectedNet === net.id ? null : net.id;
         this.render();
       });
@@ -433,6 +451,17 @@ export class App {
 
   handlePinClick(key) {
     if (this.mode !== "connect") return;
+    // With a net selected, Connect adds pins to that net (edit its membership).
+    if (this.selectedNet) {
+      const net = this.project.nets.find((n) => n.id === this.selectedNet);
+      if (net && !net.pins.has(key)) {
+        this.snapshot();
+        this.project.assignPin(key, net.id);
+        this._afterStructuralChange(true);
+        this._status(`added ${pinLabel(this.project, key)} to ${net.label || net.id}`);
+      }
+      return;
+    }
     if (!this.pending) {
       this.pending = key;
       this.render();

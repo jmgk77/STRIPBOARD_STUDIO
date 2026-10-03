@@ -194,4 +194,24 @@ dialog pre {
   font: inherit;
   font-size: 12px;
 }
-.netpins { font-size: 11px; margin-top: 3px; word-break: break-word; }
+.netpins { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  padding: 1px 3px 1px 6px;
+  border-radius: 999px;
+  background: #2b3542;
+  border: 1px solid var(--line);
+}
+.chipx {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 2px;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chipx:hover { color: var(--error); }

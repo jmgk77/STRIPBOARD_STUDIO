@@ -105,6 +105,19 @@ export class Project {
     return net;
   }
 
+  /** Move a pin into net `id` (creating it if needed), removing it from any other net. */
+  assignPin(key, id) {
+    for (const n of this.nets) n.pins.delete(key);
+    let net = this.nets.find((n) => n.id === id);
+    if (!net) {
+      net = new Net(id);
+      this.nets.push(net);
+    }
+    net.pins.add(key);
+    this.nets = this.nets.filter((n) => n === net || n.pins.size > 0);
+    return net;
+  }
+
   uniqueNetId() {
     const taken = new Set(this.nets.map((n) => n.id));
     let n = 1;

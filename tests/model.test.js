@@ -38,6 +38,18 @@ test("pinLabel prefers the instance pin name", () => {
   assert.equal(pinLabel(p, "U1.L2"), "U1.L2");
 });
 
+test("assignPin moves a pin into a net and out of others", () => {
+  const p = new Project();
+  p.addComponent(new Component({ ref: "J1", part: "header2" }));
+  p.addComponent(new Component({ ref: "J2", part: "header2" }));
+  p.nets = [new Net("A", [pinKey("J1", "1")]), new Net("B", [pinKey("J2", "1")])];
+  p.assignPin(pinKey("J1", "2"), "B");
+  assert.equal(p.netOf(pinKey("J1", "2")).id, "B");
+  p.assignPin(pinKey("J1", "1"), "B"); // move out of A; A becomes empty and is dropped
+  assert.equal(p.netOf(pinKey("J1", "1")).id, "B");
+  assert.equal(p.nets.find((n) => n.id === "A"), undefined);
+});
+
 test("net labels survive a JSON round-trip", () => {
   const p = new Project();
   p.nets = [new Net("N1", ["J1.1"], 1, "VCC")];
