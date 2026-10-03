@@ -828,8 +828,9 @@ export class App {
         this.svg.setPointerCapture(evt.pointerId);
         return;
       }
-      // Alt+drag a bendable part's lead to change its span
-      if (evt.altKey && this.mode === "select") {
+      // Shift+drag (or Alt+drag) a bendable part's lead to change its span. Shift is used
+      // first because Alt+drag is grabbed by the window manager on Linux.
+      if ((evt.shiftKey || evt.altKey) && this.mode === "select") {
         const el = evt.target.closest("[data-ref]");
         const comp = el && this.project.components.get(el.dataset.ref);
         const part = comp && LIBRARY.get(comp.part);

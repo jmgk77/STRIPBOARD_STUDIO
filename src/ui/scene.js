@@ -326,6 +326,19 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
   for (const p of pts) {
     el("circle", { "data-ref": comp.ref, "data-pin": p.id, cx: p.X, cy: p.Y, r: 11, fill: "transparent", cursor: "pointer" }, g);
   }
+
+  // when a bendable part is selected, mark the movable lead so Shift+Alt drag is discoverable
+  if (isSel && part.bendable) {
+    const far = pts.find((p) => p.id === part.pins[1]?.id) ?? pts[1];
+    if (far) {
+      const vertical = (comp.rot || 0) % 180 === 0;
+      el("rect", {
+        x: far.X - 8, y: far.Y - 8, width: 16, height: 16, rx: 3, fill: "none",
+        stroke: "#2a9d5f", "stroke-width": 2.5, "stroke-dasharray": "4 3",
+        cursor: vertical ? "ns-resize" : "ew-resize", "pointer-events": "none",
+      }, g);
+    }
+  }
 }
 
 function drawGlyph(g, part, pts) {
@@ -409,9 +422,9 @@ function drawGlyph(g, part, pts) {
   }
   if (kind === "terminal") {
     for (const p of pts) {
-      el("circle", { cx: p.X, cy: p.Y, r: 10, fill: "#d9d7cb", stroke: "#202020", "stroke-width": 1.5 }, g);
-      el("circle", { cx: p.X, cy: p.Y, r: 6, fill: "none", stroke: "#8a8a80", "stroke-width": 1 }, g);
-      el("line", { x1: p.X - 6, y1: p.Y - 6, x2: p.X + 6, y2: p.Y + 6, stroke: "#202020", "stroke-width": 2.2 }, g);
+      el("circle", { cx: p.X, cy: p.Y, r: 22, fill: "#d9d7cb", stroke: "#202020", "stroke-width": 2 }, g);
+      el("circle", { cx: p.X, cy: p.Y, r: 13, fill: "none", stroke: "#8a8a80", "stroke-width": 1.5 }, g);
+      el("line", { x1: p.X - 9, y1: p.Y - 9, x2: p.X + 9, y2: p.Y + 9, stroke: "#202020", "stroke-width": 3.5 }, g);
     }
     return;
   }
