@@ -1,8 +1,11 @@
 // A basic, read-only schematic view (IEC-style symbols), derived from the same model.
 // Read-only: edit the schematic in KiCad via netlist export if you need more.
 //
-// Wires are NOT drawn (they overlapped). Each pin carries a net LABEL (its name, or a
-// number when unnamed), like real schematics use net labels. Same label = same net.
+// Wiring rules (standard look, never overlapping):
+//   * a 2-pin net is drawn as a STRAIGHT horizontal wire only when both pins end up on
+//     the same row with a clear path (2-pin parts are flipped to face each other when
+//     that makes it possible);
+//   * every other net is shown with net LABELS (name, or a number when unnamed) at pins.
 
 import { splitPin } from "../core/model.js";
 
@@ -83,11 +86,11 @@ function pack(project, library) {
   const items = ordered.map((comp) => {
     const part = library.get(comp.part);
     const layout = symbolLayout(part);
-    return { comp, part, layout, all: [...layout.left, ...layout.right] };
+    return { comp, part, layout, left: layout.left.slice(), right: layout.right.slice(), all: [] };
   });
   const maxW = 900;
   const gapX = 46;
-  const gapY = 46;
+  const gapY = 48;
   let x = 40;
   let y = 40;
   let rowH = 0;
@@ -104,7 +107,44 @@ function pack(project, library) {
     x += w + gapX;
     rowH = Math.max(rowH, h);
   }
+  // 2-pin parts flip to face the part on the other end of a 2-pin net (so wires align).
+  for (const it of items) {
+    if (it.layout.two) {
+      const [pinA, pinB] = [it.layout.left[0].id, it.layout.right[0].id];
+      let scoreNormal = 0;
+      let scoreFlip = 0;
+      for (const net of project.nets) {
+        if (net.pins.size !== 2) continue;
+        const keys = [...net.pins];
+        const mine = keys.find((k) => splitPin(k).ref === it.comp.ref);
+        if (!mine) continue;
+        const otherRef = splitPin(keys.find((k) => k !== mine)).ref;
+        const other = items.find((i) => i.comp.ref === otherRef);
+        if (!other || Math.abs(other.cy - it.cy) > 1) continue;
+        const want = other.cx > it.cx ? "right" : "left";
+        const pid = splitPin(mine).pin;
+        const normalSide = pid === pinA ? "left" : "right";
+        const flipSide = pid === pinA ? "right" : "left";
+        if (normalSide === want) scoreNormal += 1;
+        if (flipSide === want) scoreFlip += 1;
+      }
+      if (scoreFlip > scoreNormal) {
+        it.left = it.layout.right.map((p) => ({ ...p, lx: -p.lx }));
+        it.right = it.layout.left.map((p) => ({ ...p, lx: -p.lx }));
+      }
+    }
+    it.all = [...it.left, ...it.right];
+  }
   return { items, width: maxW + 40, height: y + rowH + 60 };
+}
+
+function bodyRect(it) {
+  return {
+    x0: it.cx - it.layout.body.w / 2,
+    y0: it.cy - it.layout.body.h / 2,
+    x1: it.cx + it.layout.body.w / 2,
+    y1: it.cy + it.layout.body.h / 2,
+  };
 }
 
 export function renderSchematic(svg, state) {
@@ -123,42 +163,63 @@ export function renderSchematic(svg, state) {
   el("rect", { x: 0, y: 0, width, height, fill: "#fbfbf7" }, svg);
   el("text", { x: width / 2, y: 20, "text-anchor": "middle", "font-size": 13, fill: "#6b7280" }, svg).textContent = `${project.title} — schematic`;
 
-  // placed pins per net (and which nets are simple = exactly two pins -> draw a wire)
+  // placed pins per net
   const netPins = new Map();
   for (const it of items) {
     for (const p of it.all) {
       const net = project.netOf(`${it.comp.ref}.${p.id}`);
       if (!net) continue;
       const list = netPins.get(net.id) ?? [];
-      list.push({ x: it.cx + p.lx, y: it.cy + p.ly });
+      list.push({ x: it.cx + p.lx, y: it.cy + p.ly, ref: it.comp.ref });
       netPins.set(net.id, list);
     }
   }
-  const isWireNet = (id) => (netPins.get(id)?.length ?? 0) === 2;
 
+  // decide which 2-pin nets become straight wires: same row, clear path, no overlap
+  const boxes = items.map((it) => ({ it, r: bodyRect(it) }));
+  const wireNets = new Map(); // netId -> [a,b]
+  const usedSegments = [];
+  for (const net of project.nets) {
+    const pts = netPins.get(net.id);
+    if (!pts || pts.length !== 2) continue;
+    const [a, b] = pts;
+    if (Math.abs(a.y - b.y) > 0.5) continue;
+    const y = a.y;
+    const lo = Math.min(a.x, b.x);
+    const hi = Math.max(a.x, b.x);
+    const blocked = boxes.some(({ it, r }) => {
+      if (it.comp.ref === a.ref || it.comp.ref === b.ref) return false;
+      return y >= r.y0 - 2 && y <= r.y1 + 2 && hi > r.x0 - 4 && lo < r.x1 + 4;
+    });
+    if (blocked) continue;
+    const overlaps = usedSegments.some((s) => Math.abs(s.y - y) < 1 && hi > s.lo - 4 && lo < s.hi + 4);
+    if (overlaps) continue;
+    usedSegments.push({ y, lo, hi });
+    wireNets.set(net.id, [a, b]);
+  }
+
+  // symbols (+ labels for everything that is not a straight wire)
   for (const it of items) {
     const { comp, part, layout } = it;
     const s = el("g", { "data-ref": comp.ref, class: "component hoverable", cursor: "pointer" }, svg);
     const bx = it.cx - layout.body.w / 2;
     const by = it.cy - layout.body.h / 2;
     el("rect", { x: bx, y: by, width: layout.body.w, height: layout.body.h, rx: 4, fill: "#ffffff", stroke: "#202020", "stroke-width": 1.6 }, s);
-
     for (const p of it.all) {
-      const side = layout.left.includes(p) ? -1 : 1;
+      const side = it.left.includes(p) ? -1 : 1;
       const edgeX = side < 0 ? bx : bx + layout.body.w;
       const px = it.cx + p.lx;
       const py = it.cy + p.ly;
       el("line", { x1: edgeX, y1: py, x2: px, y2: py, stroke: LINE, "stroke-width": 1.4 }, s);
       el("circle", { cx: px, cy: py, r: 2.6, fill: LINE }, s);
       const net = project.netOf(`${comp.ref}.${p.id}`);
-      if (net && !isWireNet(net.id)) {
-        // complex net: a label (name or number) instead of a wire
+      if (net && !wireNets.has(net.id)) {
         const lit = focus.has(net.id);
         const col = colors.get(net.id);
         const g = el("g", { "data-net": net.id, class: "wire hoverable", cursor: "pointer" }, s);
-        el("line", { x1: px, y1: py, x2: px + side * 14, y2: py, stroke: col, "stroke-width": lit ? 3 : 1.6 }, g);
+        el("line", { x1: px, y1: py, x2: px + side * 16, y2: py, stroke: col, "stroke-width": lit ? 3 : 1.6 }, g);
         el("text", {
-          x: px + side * 18, y: py + 3, "text-anchor": side < 0 ? "end" : "start",
+          x: px + side * 20, y: py + 3, "text-anchor": side < 0 ? "end" : "start",
           "font-size": 10, "font-weight": lit ? 700 : 600, fill: col,
         }, g).textContent = labelOf(net);
       } else if (!net) {
@@ -171,20 +232,20 @@ export function renderSchematic(svg, state) {
     el("text", { x: it.cx, y: by - 7, "text-anchor": "middle", "font-size": 10, fill: sel ? "#2a9d5f" : "#101010", "font-weight": sel ? 700 : 400 }, s).textContent = label;
   }
 
-  // simple (2-pin) nets: an orthogonal wire, drawn on top
+  // straight wires for the simple nets
   for (const net of project.nets) {
-    const pts = netPins.get(net.id);
-    if (!pts || pts.length !== 2) continue;
+    const pts = wireNets.get(net.id);
+    if (!pts) continue;
     const [a, b] = pts;
     const lit = focus.has(net.id);
     const col = colors.get(net.id);
     const g = el("g", { "data-net": net.id, class: "wire hoverable", cursor: "pointer" }, svg);
-    el("path", { d: `M ${a.x} ${a.y} L ${b.x} ${a.y} L ${b.x} ${b.y}`, fill: "none", stroke: col, "stroke-width": lit ? 3 : 1.8 }, g);
+    el("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: col, "stroke-width": lit ? 3 : 1.8 }, g);
     for (const p of [a, b]) {
       el("circle", { cx: p.x, cy: p.y, r: 3.2, fill: col }, g);
       el("circle", { cx: p.x, cy: p.y, r: 8, fill: "transparent" }, g);
     }
-    el("text", { x: (a.x + b.x) / 2 + 6, y: a.y - 4, "font-size": 10, "font-weight": 600, fill: col }, g).textContent = labelOf(net);
+    el("text", { x: (a.x + b.x) / 2, y: a.y - 5, "text-anchor": "middle", "font-size": 10, "font-weight": 600, fill: col }, g).textContent = labelOf(net);
   }
 }
 
