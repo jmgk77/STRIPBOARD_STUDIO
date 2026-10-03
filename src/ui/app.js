@@ -15,6 +15,7 @@ import { renderSchematic } from "./schematic.js";
 
 const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q", module: "U" };
 const AUTOSAVE_KEY = "stripboard-studio:autosave";
+const SAVED_NAMES_KEY = "stripboard-studio:saved-names";
 
 export class App {
   constructor() {
@@ -1174,30 +1175,68 @@ export class App {
     URL.revokeObjectURL(url);
   }
 
+  _baseName(name) {
+    return name.replace(/ \(\d+\)$/, "");
+  }
+
+  // The browser cannot see the Downloads folder, so we cannot detect a file that already
+  // exists on disk. We can only avoid reusing a name *this app* has already emitted; on top
+  // of that, browsers themselves rename on a real collision (so worst case is "x (1) (1)").
+  _usedNames() {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(SAVED_NAMES_KEY) || "[]"));
+    } catch {
+      return new Set();
+    }
+  }
+
+  _uniqueName(base) {
+    const used = this._usedNames();
+    if (!used.has(base)) return base;
+    for (let i = 1; ; i++) {
+      const cand = `${base} (${i})`;
+      if (!used.has(cand)) return cand;
+    }
+  }
+
+  _rememberName(name) {
+    try {
+      const used = this._usedNames();
+      used.add(name);
+      localStorage.setItem(SAVED_NAMES_KEY, JSON.stringify([...used]));
+    } catch {
+      // storage unavailable: the browser's own collision handling still applies
+    }
+  }
+
   _afterSave(name) {
     this.fileName = name;
-    this.project.title = name;
+    this.project.title = this._baseName(name); // keep the title free of the "(n)" suffix
     this.dirty = false;
     this._persistAutosave(); // record the cleared dirty flag right away
+    this._rememberName(name);
     this._status(`saved ${name}.json`);
   }
 
   save() {
-    let name = this.fileName;
-    if (!name) {
+    let base = this.fileName ? this._baseName(this.fileName) : null;
+    if (!base) {
       const ans = window.prompt("Save board as", this.project.title || "board");
       if (ans == null) return;
-      name = (ans.trim() || "board").replace(/\.json$/i, "");
+      base = (ans.trim() || "board").replace(/\.json$/i, "");
     }
+    const name = this._uniqueName(base);
     this._downloadProject(name);
     this._afterSave(name);
   }
 
   /** Always ask for a name, even when the board already has one. */
   saveAs() {
-    const ans = window.prompt("Save board as", this.fileName || this.project.title || "board");
+    const def = this.fileName ? this._baseName(this.fileName) : this.project.title || "board";
+    const ans = window.prompt("Save board as", def);
     if (ans == null) return;
-    const name = (ans.trim() || "board").replace(/\.json$/i, "");
+    const base = (ans.trim() || "board").replace(/\.json$/i, "");
+    const name = this._uniqueName(base);
     this._downloadProject(name);
     this._afterSave(name);
   }
