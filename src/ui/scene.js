@@ -219,7 +219,7 @@ function drawCutBorder(svg, state, sx, sy) {
   const cols = b.x1 - b.x0 + 1;
   const rows = b.y1 - b.y0 + 1;
   el("text", {
-    x: x + w / 2, y: y0 - 7, "text-anchor": "middle", fill: "#ffd54a", "font-size": 11, "font-weight": 600,
+    x: x + w / 2, y: y0 - 20, "text-anchor": "middle", fill: "#ffd54a", "font-size": 11, "font-weight": 600,
   }, svg).textContent = `cut board: ${cols} x ${rows} holes`;
 }
 
