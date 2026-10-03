@@ -114,6 +114,8 @@ export function render(svg, state) {
       const lit = [...nets].some((id) => focusNets.has(id));
       const x1 = sx(a);
       const x2 = sx(b);
+      // a run carrying exactly one net is clickable: it selects that net (U1)
+      const clickableNet = nets.size === 1 && L.nets !== false && !mono;
       el("rect", {
         x: Math.min(x1, x2) - CELL / 2,
         y: sy(y) - CELL / 2,
@@ -123,6 +125,7 @@ export function render(svg, state) {
         stroke: mono ? C.stripEdge : "none",
         "stroke-width": mono ? 0.6 : 0,
         opacity: mono ? 1 : lit ? 0.85 : stripOpacity,
+        ...(clickableNet ? { "data-net": [...nets][0], cursor: "pointer" } : {}),
       }, svg);
       // name the net on its strip (only when it has a friendly name, or is selected)
       if (nets.size === 1 && b - a >= 1) {
@@ -296,6 +299,7 @@ function drawRatsnest(svg, state, sx, sy, colors) {
         "stroke-width": sel ? 3.6 : 1.6,
         "stroke-dasharray": sel ? "9 5" : "5 4",
         opacity: sel ? 1 : dim ? 0.16 : 0.7,
+        "data-net": net.id, cursor: "pointer", // click a rat line to select the net (U1)
       }, svg);
     }
     if (sel) {

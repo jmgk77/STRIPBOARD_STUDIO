@@ -147,6 +147,17 @@ aside h3 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; lette
 .list .item.pal .grow { flex: 1; cursor: pointer; }
 .box { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-height: 30px; }
 
+#partSearch { width: 100%; box-sizing: border-box; margin: 6px 0 2px; }
+.palgroup { margin: 2px 0 6px; }
+.palgroup > summary {
+  cursor: pointer; list-style: none; user-select: none;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+  padding: 3px 0;
+}
+.palgroup > summary::-webkit-details-marker { display: none; }
+.palgroup > summary::before { content: "▾ "; }
+.palgroup:not([open]) > summary::before { content: "▸ "; }
+
 .pill { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 11px; }
 .pill.error { background: #4a1f22; color: var(--error); }
 .pill.warn { background: #4a3d1f; color: var(--warn); }

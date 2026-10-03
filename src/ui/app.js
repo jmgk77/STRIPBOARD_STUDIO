@@ -16,6 +16,15 @@ import { renderSchematic } from "./schematic.js";
 const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q", module: "U" };
 const AUTOSAVE_KEY = "stripboard-studio:autosave";
 const SAVED_NAMES_KEY = "stripboard-studio:saved-names";
+const RECENT_PARTS_KEY = "stripboard-studio:recent-parts";
+
+// Palette grouping (U2): each non-custom part falls into the first group whose `kinds` match.
+const PALETTE_GROUPS = [
+  { label: "Discretes", kinds: ["resistor", "capacitor", "led", "diode", "transistor"] },
+  { label: "Headers & terminals", kinds: ["header", "terminal"] },
+  { label: "ICs", kinds: ["dip"] },
+  { label: "Modules & boards", kinds: ["module"] },
+];
 
 export class App {
   constructor() {
@@ -37,6 +46,8 @@ export class App {
     this._editingPart = null;
     this._editBefore = null;
     this._statusTimer = null;
+    this._paletteQuery = "";
+    this._recentParts = this._loadRecent();
     this.fileName = null;
     this.issues = [];
     this.history = [];
@@ -91,10 +102,8 @@ export class App {
     return this.active === "edit" ? this.project : this.versions[this.active] ?? this.project;
   }
 
-  render() {
-    const project = this._shownProject();
-    this.issues = analyze(project, LIBRARY).issues;
-    const state = {
+  _boardState(project) {
+    return {
       project,
       library: LIBRARY,
       view: this.view,
@@ -110,8 +119,19 @@ export class App {
       layers: this.layers,
       issues: this.issues,
     };
+  }
+
+  /** Redraw only the board/schematic SVG (no panels) — safe while a panel input has focus. */
+  _renderBoard(project = this._shownProject()) {
+    const state = this._boardState(project);
     if (this.schematic) renderSchematic(this.svg, state);
     else render(this.svg, state);
+  }
+
+  render() {
+    const project = this._shownProject();
+    this.issues = analyze(project, LIBRARY).issues;
+    this._renderBoard(project);
     this._renderPalette();
     this._renderNets();
     this._renderProblems();
@@ -180,41 +200,95 @@ export class App {
     return window.confirm("You have unsaved changes. Discard them?");
   }
 
+  _loadRecent() {
+    try {
+      const a = JSON.parse(localStorage.getItem(RECENT_PARTS_KEY) || "[]");
+      return Array.isArray(a) ? a : [];
+    } catch {
+      return [];
+    }
+  }
+
+  _rememberRecent(name) {
+    this._recentParts = [name, ...this._recentParts.filter((n) => n !== name)].slice(0, 6);
+    try {
+      localStorage.setItem(RECENT_PARTS_KEY, JSON.stringify(this._recentParts));
+    } catch {
+      // storage unavailable: recent list is optional
+    }
+  }
+
+  _paletteItem(part, isCustom) {
+    const item = document.createElement("div");
+    item.className = "item pal";
+    const label = document.createElement("span");
+    label.className = "grow";
+    label.textContent = part.label;
+    label.title = "click to add";
+    label.addEventListener("click", () => this.addPart(part.name));
+    item.appendChild(label);
+    if (isCustom) {
+      const spec = this.project.customParts.find((s) => s.name === part.name);
+      const edit = document.createElement("button");
+      edit.className = "minibtn";
+      edit.textContent = "✎";
+      edit.title = "edit this pin bar";
+      edit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.openEditPart(spec);
+      });
+      const del = document.createElement("button");
+      del.className = "minibtn";
+      del.textContent = "✕";
+      del.title = "delete this pin bar";
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.deletePart(part.name);
+      });
+      item.appendChild(edit);
+      item.appendChild(del);
+    }
+    return item;
+  }
+
   _renderPalette() {
     const box = document.getElementById("palette-list");
     box.innerHTML = "";
-    for (const part of listParts()) {
-      const item = document.createElement("div");
-      item.className = "item pal";
-      const label = document.createElement("span");
-      label.className = "grow";
-      label.textContent = part.label;
-      label.title = "click to add";
-      label.addEventListener("click", () => this.addPart(part.name));
-      item.appendChild(label);
-      const spec = this.project.customParts.find((s) => s.name === part.name);
-      if (spec) {
-        const edit = document.createElement("button");
-        edit.className = "minibtn";
-        edit.textContent = "✎";
-        edit.title = "edit this pin bar";
-        edit.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.openEditPart(spec);
-        });
-        const del = document.createElement("button");
-        del.className = "minibtn";
-        del.textContent = "✕";
-        del.title = "delete this pin bar";
-        del.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.deletePart(part.name);
-        });
-        item.appendChild(edit);
-        item.appendChild(del);
-      }
-      box.appendChild(item);
+    const q = this._paletteQuery.trim().toLowerCase();
+    const parts = listParts();
+    const customNames = new Set(this.project.customParts.map((s) => s.name));
+    const byName = new Map(parts.map((p) => [p.name, p]));
+    const matches = (p) =>
+      !q || p.label.toLowerCase().includes(q) || p.name.toLowerCase().includes(q) || String(p.kind).includes(q);
+
+    const groups = [];
+    if (!q) {
+      const recent = this._recentParts.map((n) => byName.get(n)).filter((p) => p && !customNames.has(p.name) && matches(p));
+      if (recent.length) groups.push({ label: "Recent", parts: recent });
     }
+    for (const g of PALETTE_GROUPS) {
+      groups.push({ label: g.label, parts: parts.filter((p) => g.kinds.includes(p.kind) && !customNames.has(p.name) && matches(p)) });
+    }
+    const customs = parts.filter((p) => customNames.has(p.name) && matches(p));
+    if (customs.length) groups.push({ label: "Custom", parts: customs });
+
+    let shown = 0;
+    for (const g of groups) {
+      if (!g.parts.length) continue;
+      shown += g.parts.length;
+      const det = document.createElement("details");
+      det.className = "palgroup";
+      det.open = true;
+      const sum = document.createElement("summary");
+      sum.textContent = `${g.label} (${g.parts.length})`;
+      det.appendChild(sum);
+      const inner = document.createElement("div");
+      inner.className = "list";
+      for (const part of g.parts) inner.appendChild(this._paletteItem(part, customNames.has(part.name)));
+      det.appendChild(inner);
+      box.appendChild(det);
+    }
+    if (!shown) box.innerHTML = '<div class="muted">no parts match</div>';
   }
 
   _renderNets() {
@@ -247,7 +321,7 @@ export class App {
       });
       input.addEventListener("input", () => {
         net.label = input.value.trim();
-        this.scene.set_project(this.project);
+        this._renderBoard(this.project); // live board update, keep focus in this input
       });
       input.addEventListener("change", () => {
         if (this._editBefore) this.pushHistory(this._editBefore);
@@ -398,7 +472,11 @@ export class App {
       }
       if (this.selectedNet) {
         const net = project.nets.find((n) => n.id === this.selectedNet);
-        box.textContent = `net ${net?.label || this.selectedNet} selected`;
+        if (!net) {
+          box.textContent = "(none)";
+          return;
+        }
+        this._netBox(box, net, project, ed);
         return;
       }
       box.textContent = "(none)";
@@ -428,6 +506,23 @@ export class App {
     const lock = comp.locked ? "locked" : "free";
     meta.textContent = `${part?.label ?? comp.part} — rot ${comp.rot}° — ${lock}`;
     box.appendChild(meta);
+
+    // Contextual actions for the selected component (the toolbar is kept lean; hotkeys remain).
+    const actions = document.createElement("div");
+    actions.className = "pinrow";
+    const action = (label, title, fn) => {
+      const b = document.createElement("button");
+      b.className = "minibtn";
+      b.textContent = label;
+      b.title = title;
+      b.disabled = !ed;
+      b.addEventListener("click", fn);
+      return b;
+    };
+    actions.appendChild(action("Rotate", "rotate 90° (R)", () => this.rotateSelected()));
+    actions.appendChild(action(comp.locked ? "Unlock" : "Lock", comp.locked ? "release (L)" : "pin it so Solve keeps it (L)", () => this.lockSelected()));
+    actions.appendChild(action("Delete", "remove (Delete)", () => this.deleteSelected()));
+    box.appendChild(actions);
 
     const valueRow = document.createElement("div");
     valueRow.className = "pinrow";
@@ -500,7 +595,7 @@ export class App {
         const value = input.value.trim();
         if (value) comp.pinNames[pin.id] = value;
         else delete comp.pinNames[pin.id];
-        this.scene.set_project(this.project); // update board labels, keep focus here
+        this._renderBoard(this.project); // update board labels, keep focus here
       });
       input.addEventListener("change", () => {
         if (this._editBefore) this.pushHistory(this._editBefore);
@@ -605,6 +700,7 @@ export class App {
     this.snapshot();
     this.project.addComponent(new Component({ ref, part: name, x: spot.x, y: spot.y, rot: 0, locked: false, value: part.defaultValue }));
     this.selected = ref;
+    this._rememberRecent(name);
     this._afterStructuralChange();
   }
 
@@ -629,6 +725,72 @@ export class App {
     this.selected = next;
     this.render();
     this._status(`renamed ${old} to ${next}`);
+  }
+
+  /** Properties view for a net: rename, edit its pins, delete. Mirrors the Nets tab. */
+  _netBox(box, net, project, ed) {
+    box.innerHTML = "";
+    const head = document.createElement("div");
+    head.className = "nethead";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "netname";
+    input.placeholder = net.id;
+    input.value = net.label || "";
+    input.disabled = !ed;
+    input.addEventListener("focus", () => {
+      this._editBefore = JSON.stringify(this.project.toJSON());
+    });
+    input.addEventListener("input", () => {
+      net.label = input.value.trim();
+      this._renderBoard(this.project); // live board update, keep focus here
+    });
+    input.addEventListener("change", () => {
+      if (this._editBefore) this.pushHistory(this._editBefore);
+      this._editBefore = null;
+      this.render();
+    });
+    head.appendChild(input);
+    box.appendChild(head);
+
+    const pins = document.createElement("div");
+    pins.className = "netpins";
+    if (net.pins.size === 0) pins.innerHTML = '<span class="muted">(no pins)</span>';
+    for (const key of [...net.pins].sort()) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.appendChild(document.createTextNode(pinLabel(project, key)));
+      const x = document.createElement("button");
+      x.className = "chipx";
+      x.textContent = "✕";
+      x.title = "remove this pin from the net";
+      x.disabled = !ed;
+      x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.snapshot();
+        net.pins.delete(key);
+        if (net.pins.size === 0) this.project.nets = this.project.nets.filter((n) => n !== net);
+        this._afterStructuralChange(true);
+      });
+      chip.appendChild(x);
+      pins.appendChild(chip);
+    }
+    box.appendChild(pins);
+
+    const row = document.createElement("div");
+    row.className = "pinrow";
+    const del = document.createElement("button");
+    del.className = "minibtn";
+    del.textContent = "Delete net";
+    del.disabled = !ed;
+    del.addEventListener("click", () => {
+      this.snapshot();
+      this.project.nets = this.project.nets.filter((n) => n !== net);
+      if (this.selectedNet === net.id) this.selectedNet = null;
+      this._afterStructuralChange(false);
+    });
+    row.appendChild(del);
+    box.appendChild(row);
   }
 
   _wireBox(box, title, lines, fixed, ed = true, fixable = true) {
@@ -1501,9 +1663,7 @@ export class App {
     document.getElementById("pDouble").addEventListener("change", () => this.updatePartForm());
     on("undo", () => this.undo());
     on("redo", () => this.redo());
-    on("rotate", () => this.rotateSelected());
-    on("lock", () => this.lockSelected());
-    on("delete", () => this.deleteSelected());
+
     on("print", () => this.printBoards());
     for (const el of document.querySelectorAll("#exportMenu .menu-items button")) {
       el.addEventListener("click", () => {
@@ -1533,7 +1693,11 @@ export class App {
       if (this.schematic && this._isToolMode()) this.setMode("select");
       this.render();
     });
-    on("unfix", () => this.toggleFixSelected());
+    const partSearch = document.getElementById("partSearch");
+    partSearch.addEventListener("input", () => {
+      this._paletteQuery = partSearch.value;
+      this._renderPalette();
+    });
     const layerIds = { "lc-parts": "parts", "lc-wires": "wires", "lc-cuts": "cuts", "lc-copper": "copper", "lc-nets": "nets", "lc-grid": "grid" };
     for (const [id, key] of Object.entries(layerIds)) {
       document.getElementById(id).addEventListener("change", (e) => {
