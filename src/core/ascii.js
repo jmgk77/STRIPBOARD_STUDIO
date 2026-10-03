@@ -1,7 +1,7 @@
 // A plain-text (ASCII) rendering of the board: strips, cuts, jumpers, pins and a legend.
 // Meant for debugging and for pasting into a chat -- the whole physical state in text.
 
-import { contentBounds, componentPins } from "./geometry.js";
+import { contentBounds, componentPins, rowLabel } from "./geometry.js";
 import { pinLabel } from "./model.js";
 
 const SYMBOLS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -52,9 +52,12 @@ export function toAscii(project, library, { margin = 1 } = {}) {
     }
   }
 
+  const labels = [];
+  for (let y = y0; y <= y1; y++) labels.push(rowLabel(y, rows));
+  const padW = Math.max(1, ...labels.map((s) => s.length));
   const lines = [];
-  lines.push(`${project.title}  ${cols}x${rows}  (showing cols ${x0}-${x1}, rows ${y0}-${y1})`);
-  const pad = " ".repeat(String(y1).length + 2);
+  lines.push(`${project.title}  ${cols}x${rows}  (cols ${x0}-${x1}, rows ${rowLabel(y0, rows)}-${rowLabel(y1, rows)})`);
+  const pad = " ".repeat(padW + 2);
   const tens = pad + Array.from({ length: w }, (_, i) => {
     const c = x0 + i;
     return Math.floor(c / 10) % 10;
@@ -63,7 +66,7 @@ export function toAscii(project, library, { margin = 1 } = {}) {
   lines.push(tens);
   lines.push(units);
   for (let y = y0; y <= y1; y++) {
-    lines.push(`${String(y).padStart(String(y1).length)}  ` + grid[y - y0].join(""));
+    lines.push(`${rowLabel(y, rows).padStart(padW)}  ` + grid[y - y0].join(""));
   }
 
   lines.push("");
@@ -76,7 +79,7 @@ export function toAscii(project, library, { margin = 1 } = {}) {
     const pins = componentPins(comp, part)
       .map((p) => {
         const name = comp.pinNames?.[p.id];
-        return `${p.id}=(${p.x},${p.y})${name ? ` "${name}"` : ""}`;
+        return `${p.id}=(${p.x},${rowLabel(p.y, rows)})${name ? ` "${name}"` : ""}`;
       })
       .join(" ");
     const lock = comp.locked ? " locked" : "";
@@ -90,9 +93,12 @@ export function toAscii(project, library, { margin = 1 } = {}) {
     lines.push(`  ${net.id}: ${[...net.pins].sort().map((k) => pinLabel(project, k)).join(", ")}`);
   }
   lines.push("");
-  lines.push(`cuts: ${[...project.cuts].sort().join(" ") || "(none)"}`);
+  const cell = (x, y) => `${x}${rowLabel(y, rows)}`;
   lines.push(
-    `jumpers: ${project.jumpers.map((j) => `${j.x}:${j.ya}-${j.yb}`).join(" ") || "(none)"}`,
+    `cuts: ${[...project.cuts].sort().map((c) => { const [x, y] = c.split(",").map(Number); return cell(x, y); }).join(" ") || "(none)"}`,
+  );
+  lines.push(
+    `jumpers: ${project.jumpers.map((j) => `${cell(j.x, j.ya)}-${cell(j.x, j.yb)}`).join(" ") || "(none)"}`,
   );
   return lines.join("\n");
 }

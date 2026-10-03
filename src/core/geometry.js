@@ -4,6 +4,23 @@
 
 export const ROTS = [0, 90, 180, 270];
 
+/** Spreadsheet-style row letter: 1 -> A, 26 -> Z, 27 -> AA. */
+export function rowLetter(n) {
+  let s = "";
+  let k = Math.max(1, Math.round(n));
+  while (k > 0) {
+    k -= 1;
+    s = String.fromCharCode(65 + (k % 26)) + s;
+    k = Math.floor(k / 26);
+  }
+  return s;
+}
+
+/** Row label with A at the BOTTOM: row y of a `rows`-tall board. */
+export function rowLabel(y, rows) {
+  return rowLetter(rows - y + 1);
+}
+
 export function normalizeDeg(deg) {
   return ((deg % 360) + 360) % 360;
 }

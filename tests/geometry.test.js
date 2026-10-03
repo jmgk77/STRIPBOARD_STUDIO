@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { rotateLocal, normalizeDeg, pinWorld, contentBounds } from "../src/core/geometry.js";
+import { rotateLocal, normalizeDeg, pinWorld, contentBounds, rowLetter, rowLabel } from "../src/core/geometry.js";
 import { LIBRARY } from "../src/core/library.js";
 import { Component, Project } from "../src/core/model.js";
 
@@ -28,6 +28,14 @@ test("pinWorld translates by the component origin", () => {
   const comp = new Component({ ref: "J1", part: "header3", x: 2, y: 4 });
   assert.deepEqual(pinWorld(comp, part, "1"), { x: 2, y: 4 });
   assert.deepEqual(pinWorld(comp, part, "3"), { x: 2, y: 6 });
+});
+
+test("row letters: A is the bottom row", () => {
+  assert.equal(rowLetter(1), "A");
+  assert.equal(rowLetter(26), "Z");
+  assert.equal(rowLetter(27), "AA");
+  assert.equal(rowLabel(1, 10), "J"); // top of a 10-row board
+  assert.equal(rowLabel(10, 10), "A"); // bottom
 });
 
 test("a bendable part's span sets its second pin", () => {

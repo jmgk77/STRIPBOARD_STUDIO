@@ -1,7 +1,7 @@
 // SVG rendering of the board. Pure draw: it builds the SVG DOM from a state object and
 // sets data attributes for event delegation. No application state lives here.
 
-import { componentPins, componentBody, contentBounds } from "../core/geometry.js";
+import { componentPins, componentBody, contentBounds, rowLabel } from "../core/geometry.js";
 import { cellId } from "../core/connectivity.js";
 import { splitPin } from "../core/model.js";
 
@@ -173,6 +173,14 @@ export function render(svg, state) {
     if (project.fixedCuts?.has(c)) el("circle", { cx, cy, r: r + 3, fill: "#ffffff", opacity: 0.9 }, g);
     el("line", { x1: cx - r, y1: cy - r, x2: cx + r, y2: cy + r, stroke: sel ? "#ffd54a" : "#ff5555", "stroke-width": sel ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
     el("line", { x1: cx - r, y1: cy + r, x2: cx + r, y2: cy - r, stroke: sel ? "#ffd54a" : "#ff5555", "stroke-width": sel ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
+  }
+
+  // axis labels: columns numbered along the top, rows lettered down the left (A at bottom)
+  for (let x = 1; x <= cols; x++) {
+    el("text", { x: sx(x), y: PAD - CELL / 2 - 7, "text-anchor": "middle", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = String(x);
+  }
+  for (let y = 1; y <= rows; y++) {
+    el("text", { x: PAD - CELL / 2 - 8, y: sy(y) + 3, "text-anchor": "end", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = rowLabel(y, rows);
   }
 
   drawCutBorder(svg, state, sx, sy);
