@@ -51,6 +51,28 @@ export function render(svg, state) {
   const origin = state.origin ?? { row: 1, col: 1 }; // printed label origin (default A1)
   const colText = (x) => String(origin.col + x - 1);
   const rowText = (y) => rowLetter(origin.row + rows - y);
+  const mono = state.mono === true; // greyscale/BW, for printing without a colour printer
+  const C = {
+    boardBg: mono ? "#ffffff" : "#0f5132",
+    boardEdge: mono ? "#000000" : "#062d1c",
+    strip: mono ? "#d9d9d9" : "#c48a3e",
+    stripEdge: mono ? "#7a7a7a" : "#c48a3e",
+    hole: mono ? "#ffffff" : "#e8e8e8",
+    holeEdge: mono ? "#8a8a8a" : "#8a8a8a",
+    grid: mono ? "#c0c0c0" : "#ffffff",
+    cut: mono ? "#000000" : "#ff5555",
+    jumper: mono ? "#000000" : "#4c9aff",
+    jumperDark: mono ? "#000000" : "#0b2b52",
+    comp: mono ? "#ffffff" : "#f0efe9",
+    compEdge: mono ? "#000000" : "#202020",
+    locked: mono ? "#555555" : "#b03ca0",
+    sel: mono ? "#000000" : "#ffcc33",
+    text: mono ? "#000000" : "#101010",
+    axis: mono ? "#000000" : "#9aa2ac",
+    border: mono ? "#000000" : "#ffd54a",
+    banner: mono ? "#000000" : "#ff6b6b",
+    pin: mono ? "#000000" : "#202020",
+  };
   const L = state.layers ?? { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
   const { sx, sy } = makeMapper(state);
   const { cols, rows } = project;
@@ -61,7 +83,7 @@ export function render(svg, state) {
   svg.setAttribute("width", width);
   svg.setAttribute("height", height);
 
-  el("rect", { x: PAD - CELL / 2, y: PAD - CELL / 2, width: cols * CELL, height: rows * CELL, rx: 4, fill: "#0f5132", stroke: "#062d1c", "stroke-width": 2 }, svg);
+  el("rect", { x: PAD - CELL / 2, y: PAD - CELL / 2, width: cols * CELL, height: rows * CELL, rx: 4, fill: C.boardBg, stroke: C.boardEdge, "stroke-width": 2 }, svg);
 
   const colors = new Map(project.nets.map((n, i) => [n.id, NET_COLORS[i % NET_COLORS.length]]));
   const netById = new Map(project.nets.map((n) => [n.id, n]));
@@ -87,7 +109,7 @@ export function render(svg, state) {
         const id = pinNet.get(cellId(x, y));
         if (id) nets.add(id);
       }
-      const fill = nets.size === 1 ? colors.get([...nets][0]) : "#c48a3e";
+      const fill = mono ? C.strip : nets.size === 1 ? colors.get([...nets][0]) : "#c48a3e";
       const lit = [...nets].some((id) => focusNets.has(id));
       const x1 = sx(a);
       const x2 = sx(b);
@@ -97,7 +119,9 @@ export function render(svg, state) {
         width: Math.abs(x1 - x2) + CELL,
         height: CELL,
         fill,
-        opacity: lit ? 0.85 : stripOpacity,
+        stroke: mono ? C.stripEdge : "none",
+        "stroke-width": mono ? 0.6 : 0,
+        opacity: mono ? 1 : lit ? 0.85 : stripOpacity,
       }, svg);
       // name the net on its strip (only when it has a friendly name, or is selected)
       if (nets.size === 1 && b - a >= 1) {
@@ -107,7 +131,7 @@ export function render(svg, state) {
         if (text) {
           el("text", {
             x: (x1 + x2) / 2, y: sy(y) + 3, "text-anchor": "middle", "font-size": 9,
-            fill: "#101010", "pointer-events": "none",
+            fill: C.text, "pointer-events": "none",
           }, svg).textContent = text;
         }
       }
@@ -119,17 +143,17 @@ export function render(svg, state) {
     const edge = PAD - CELL / 2;
     const size = { w: cols * CELL, h: rows * CELL };
     for (let k = 5; k < cols; k += 5) {
-      el("line", { x1: edge + k * CELL, y1: edge, x2: edge + k * CELL, y2: edge + size.h, stroke: "#ffffff", "stroke-opacity": 0.2, "stroke-width": 1, "stroke-dasharray": "3 5" }, svg);
+      el("line", { x1: edge + k * CELL, y1: edge, x2: edge + k * CELL, y2: edge + size.h, stroke: C.grid, "stroke-opacity": mono ? 0.9 : 0.2, "stroke-width": 1, "stroke-dasharray": "3 5" }, svg);
     }
     for (let k = 5; k < rows; k += 5) {
-      el("line", { x1: edge, y1: edge + k * CELL, x2: edge + size.w, y2: edge + k * CELL, stroke: "#ffffff", "stroke-opacity": 0.2, "stroke-width": 1, "stroke-dasharray": "3 5" }, svg);
+      el("line", { x1: edge, y1: edge + k * CELL, x2: edge + size.w, y2: edge + k * CELL, stroke: C.grid, "stroke-opacity": mono ? 0.9 : 0.2, "stroke-width": 1, "stroke-dasharray": "3 5" }, svg);
     }
   }
 
   // holes
   for (let y = 1; y <= rows; y++) {
     for (let x = 1; x <= cols; x++) {
-      el("circle", { cx: sx(x), cy: sy(y), r: HOLE_R, fill: "#e8e8e8", stroke: "#8a8a8a", "stroke-width": 0.5 }, svg);
+      el("circle", { cx: sx(x), cy: sy(y), r: HOLE_R, fill: C.hole, stroke: C.holeEdge, "stroke-width": 0.5 }, svg);
     }
   }
 
@@ -145,14 +169,14 @@ export function render(svg, state) {
     const lit = sel || focusNets.has(j.net);
     const g = el("g", { "data-wire": i, class: "wire hoverable", cursor: "pointer" }, svg);
     el("line", { x1: x, y1, x2: x, y2, stroke: "transparent", "stroke-width": 16 }, g);
-    if (j.fixed) el("line", { x1: x, y1, x2: x, y2, stroke: "#ffffff", "stroke-width": 6, "stroke-linecap": "round", opacity: 0.9 }, g);
-    el("line", { x1: x, y1, x2: x, y2, stroke: lit ? "#ffd54a" : "#4c9aff", "stroke-width": sel ? 4.5 : 3, "stroke-linecap": "round" }, g);
+    if (j.fixed && !mono) el("line", { x1: x, y1, x2: x, y2, stroke: "#ffffff", "stroke-width": 6, "stroke-linecap": "round", opacity: 0.9 }, g);
+    el("line", { x1: x, y1, x2: x, y2, stroke: lit ? C.sel : C.jumper, "stroke-width": sel || (mono && j.fixed) ? 4.5 : 3, "stroke-linecap": "round" }, g);
     for (const cy of [y1, y2]) {
-      el("circle", { cx: x, cy, r: 6, fill: lit ? "#ffd54a" : "#4c9aff", stroke: "#0b2b52", "stroke-width": 1.5 }, g);
+      el("circle", { cx: x, cy, r: 6, fill: lit ? C.sel : C.jumper, stroke: C.jumperDark, "stroke-width": 1.5 }, g);
     }
     const net = netById.get(j.net);
     const text = net?.label || (focusNets.has(j.net) ? net?.id : null);
-    if (text) el("text", { x: x + 8, y: (y1 + y2) / 2 + 3, "font-size": 9, fill: "#123", "pointer-events": "none" }, g).textContent = text;
+    if (text) el("text", { x: x + 8, y: (y1 + y2) / 2 + 3, "font-size": 9, fill: C.text, "pointer-events": "none" }, g).textContent = text;
   });
 
   // components
@@ -173,39 +197,40 @@ export function render(svg, state) {
     const sel = selectedWire?.kind === "cut" && selectedWire.key === c;
     const g = el("g", { "data-cut": c, class: "cut hoverable", cursor: "pointer" }, svg);
     el("rect", { x: cx - r - 5, y: cy - r - 5, width: 2 * (r + 5), height: 2 * (r + 5), fill: "transparent" }, g);
-    if (project.fixedCuts?.has(c)) el("circle", { cx, cy, r: r + 3, fill: "#ffffff", opacity: 0.9 }, g);
-    el("line", { x1: cx - r, y1: cy - r, x2: cx + r, y2: cy + r, stroke: sel ? "#ffd54a" : "#ff5555", "stroke-width": sel ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
-    el("line", { x1: cx - r, y1: cy + r, x2: cx + r, y2: cy - r, stroke: sel ? "#ffd54a" : "#ff5555", "stroke-width": sel ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
+    if (project.fixedCuts?.has(c) && !mono) el("circle", { cx, cy, r: r + 3, fill: "#ffffff", opacity: 0.9 }, g);
+    el("line", { x1: cx - r, y1: cy - r, x2: cx + r, y2: cy + r, stroke: sel ? C.sel : C.cut, "stroke-width": sel || (mono && project.fixedCuts?.has(c)) ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
+    el("line", { x1: cx - r, y1: cy + r, x2: cx + r, y2: cy - r, stroke: sel ? C.sel : C.cut, "stroke-width": sel || (mono && project.fixedCuts?.has(c)) ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
   }
 
   // axis labels: columns numbered along the top, rows lettered down the left (A at bottom)
   for (let x = 1; x <= cols; x++) {
-    el("text", { x: sx(x), y: PAD - CELL / 2 - 7, "text-anchor": "middle", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = colText(x);
+    el("text", { x: sx(x), y: PAD - CELL / 2 - 7, "text-anchor": "middle", "font-size": 9, fill: C.axis, "pointer-events": "none" }, svg).textContent = colText(x);
   }
   // On the copper side the board is flipped, so the row letters move to the right edge.
   const lettersRight = view === "copper";
   const lettersX = lettersRight ? PAD - CELL / 2 + cols * CELL + 8 : PAD - CELL / 2 - 8;
   for (let y = 1; y <= rows; y++) {
-    el("text", { x: lettersX, y: sy(y) + 3, "text-anchor": lettersRight ? "start" : "end", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = rowText(y);
+    el("text", { x: lettersX, y: sy(y) + 3, "text-anchor": lettersRight ? "start" : "end", "font-size": 9, fill: C.axis, "pointer-events": "none" }, svg).textContent = rowText(y);
   }
 
   drawCutBorder(svg, state, sx, sy);
 
   // resize handles on the right and bottom edges (component side only)
-  if (view !== "copper") {
+  if (view !== "copper" && !mono) {
     const edge = PAD - CELL / 2;
     el("rect", { "data-handle": "right", x: edge + cols * CELL, y: edge, width: 12, height: rows * CELL, rx: 3, fill: "#4c9aff", "fill-opacity": 0.35, stroke: "#4c9aff", cursor: "ew-resize" }, svg);
     el("rect", { "data-handle": "bottom", x: edge, y: edge + rows * CELL, width: cols * CELL, height: 12, rx: 3, fill: "#4c9aff", "fill-opacity": 0.35, stroke: "#4c9aff", cursor: "ns-resize" }, svg);
   }
 
   if (view === "copper") {
-    el("text", { x: width / 2, y: 22, "text-anchor": "middle", fill: "#ff6b6b", "font-size": 18, "font-weight": 700 }, svg).textContent = "COPPER SIDE (mirrored)";
+    el("text", { x: width / 2, y: 22, "text-anchor": "middle", fill: C.banner, "font-size": 18, "font-weight": 700 }, svg).textContent = "COPPER SIDE (mirrored)";
   }
 }
 
 // A dashed outline around everything the board uses: where you can cut a virgin board.
 function drawCutBorder(svg, state, sx, sy) {
   const { project, library } = state;
+  const mono = state.mono === true;
   const b = contentBounds(project, library);
   if (!b) return;
   // Pad in screen space: sx() is mirrored on the copper side, so expand min/max, not x0/x1.
@@ -217,12 +242,12 @@ function drawCutBorder(svg, state, sx, sy) {
   const y1 = sy(b.y1) + CELL / 2;
   el("rect", {
     x, y: y0, width: w, height: y1 - y0, rx: 4, fill: "none",
-    stroke: "#ffd54a", "stroke-width": 2, "stroke-dasharray": "9 5",
+    stroke: mono ? "#000000" : "#ffd54a", "stroke-width": 2, "stroke-dasharray": "9 5",
   }, svg);
   const cols = b.x1 - b.x0 + 1;
   const rows = b.y1 - b.y0 + 1;
   el("text", {
-    x: x + w / 2, y: y0 - 20, "text-anchor": "middle", fill: "#ffd54a", "font-size": 11, "font-weight": 600,
+    x: x + w / 2, y: y0 - 20, "text-anchor": "middle", fill: mono ? "#000000" : "#ffd54a", "font-size": 11, "font-weight": 600,
   }, svg).textContent = `cut board: ${cols} x ${rows} holes`;
 }
 
@@ -263,6 +288,14 @@ function drawRatsnest(svg, state, sx, sy, colors) {
 function drawComponent(svg, comp, part, state, sx, sy, colors) {
   const { project, selected, pending } = state;
   const focusNets = state.focusNets ?? new Set();
+  const mono = state.mono === true;
+  const compFill = mono ? "#ffffff" : "#f0efe9";
+  const compEdge = mono ? "#000000" : "#202020";
+  const lockedEdge = mono ? "#555555" : "#b03ca0";
+  const selEdge = mono ? "#000000" : "#ffcc33";
+  const wiredEdge = mono ? "#000000" : "#2a9d5f";
+  const textColor = mono ? "#000000" : "#101010";
+  const pinColor = mono ? "#000000" : "#202020";
   const isSel = selected === comp.ref;
   const wired = part.pins.some((p) => project.netOf(`${comp.ref}.${p.id}`));
   const pts = componentPins(comp, part).map((p) => ({ id: p.id, X: sx(p.x), Y: sy(p.y), cx: p.x, cy: p.y }));
@@ -293,12 +326,12 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
   const g = el("g", { "data-ref": comp.ref, class: "component hoverable", cursor: "pointer" }, svg);
   el("rect", {
     x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0, rx: 5,
-    fill: isSel && wired ? "#cfe9cf" : "#f0efe9", "fill-opacity": 0.5,
-    stroke: comp.locked ? "#b03ca0" : isSel ? (wired ? "#2a9d5f" : "#ffcc33") : "#202020",
+    fill: isSel && wired && !mono ? "#cfe9cf" : compFill, "fill-opacity": mono ? 1 : 0.5,
+    stroke: comp.locked ? lockedEdge : isSel ? (wired ? wiredEdge : selEdge) : compEdge,
     "stroke-width": isSel ? 2.5 : 1.6,
   }, g);
 
-  drawGlyph(g, part, pts);
+  drawGlyph(g, part, pts, mono);
 
   // pins: visible dot (no events). A pin lights up when its net is selected, or when the
   // part is selected (colour = its net).
@@ -309,8 +342,8 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
     const lit = isPending || inSelNet || (isSel && net);
     el("circle", {
       cx: p.X, cy: p.Y, r: isPending ? 6.5 : lit ? 6 : 4.5,
-      fill: isPending ? "#ffcc33" : lit && net ? colors.get(net.id) || "#202020" : "#202020",
-      stroke: isPending ? "#ffaa00" : inSelNet ? "#ffffff" : "#202020",
+      fill: isPending ? "#ffcc33" : lit && net && !mono ? colors.get(net.id) || pinColor : pinColor,
+      stroke: isPending ? "#ffaa00" : inSelNet ? "#ffffff" : pinColor,
       "stroke-width": inSelNet || isPending ? 2.5 : 1,
       "pointer-events": "none",
     }, g);
@@ -320,13 +353,13 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
   if (state.showNames !== false && comp.pinNames) {
     for (const p of pts) {
       const name = comp.pinNames[p.id];
-      if (name) el("text", { x: p.X + 7, y: p.Y - 5, "font-size": 8, fill: "#123" }, g).textContent = name;
+      if (name) el("text", { x: p.X + 7, y: p.Y - 5, "font-size": 8, fill: textColor }, g).textContent = name;
     }
   }
 
   // label
   const label = `${comp.ref}${comp.value ? ` ${comp.value}` : ""}${comp.locked ? " *" : ""}`;
-  el("text", { x: (bx0 + bx1) / 2, y: by0 - 4, "text-anchor": "middle", "font-size": 10, fill: "#101010", "pointer-events": "none" }, g).textContent = label;
+  el("text", { x: (bx0 + bx1) / 2, y: by0 - 4, "text-anchor": "middle", "font-size": 10, fill: textColor, "pointer-events": "none" }, g).textContent = label;
 
   // ... and a big invisible hit target on top, so pins are easy to click (and highlight)
   for (const p of pts) {
@@ -340,15 +373,16 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
       const vertical = (comp.rot || 0) % 180 === 0;
       el("rect", {
         x: far.X - 8, y: far.Y - 8, width: 16, height: 16, rx: 3, fill: "none",
-        stroke: "#2a9d5f", "stroke-width": 2.5, "stroke-dasharray": "4 3",
+        stroke: wiredEdge, "stroke-width": 2.5, "stroke-dasharray": "4 3",
         cursor: vertical ? "ns-resize" : "ew-resize", "pointer-events": "none",
       }, g);
     }
   }
 }
 
-function drawGlyph(g, part, pts) {
-  const stroke = { stroke: "#202020", "stroke-width": 1.6, fill: "none" };
+function drawGlyph(g, part, pts, mono = false) {
+  const base = mono ? "#000000" : "#202020";
+  const stroke = { stroke: base, "stroke-width": 1.6, fill: "none" };
   const kind = part.kind;
   if (kind === "resistor" && pts.length >= 2) {
     // Draw along the axis between the two pins, so it works vertically AND horizontally.
@@ -407,7 +441,7 @@ function drawGlyph(g, part, pts) {
       const size = 9;
       const my = midY - size;
       const py = midY + size;
-      el("path", { d: `M ${midX - 7} ${my} L ${midX + 7} ${my} L ${midX} ${py} Z`, fill: "#202020" }, g);
+      el("path", { d: `M ${midX - 7} ${my} L ${midX + 7} ${my} L ${midX} ${py} Z`, fill: base }, g);
       el("line", { x1: midX - 7, y1: py, x2: midX + 7, y2: py, ...stroke }, g);
       if (kind === "led") {
         el("line", { x1: midX + 8, y1: midY - 4, x2: midX + 14, y2: midY - 10, ...stroke }, g);
@@ -428,14 +462,14 @@ function drawGlyph(g, part, pts) {
   }
   if (kind === "terminal") {
     for (const p of pts) {
-      el("circle", { cx: p.X, cy: p.Y, r: 29, fill: "#d9d7cb", stroke: "#202020", "stroke-width": 2.2 }, g);
-      el("circle", { cx: p.X, cy: p.Y, r: 17, fill: "none", stroke: "#8a8a80", "stroke-width": 1.6 }, g);
-      el("line", { x1: p.X - 12, y1: p.Y - 12, x2: p.X + 12, y2: p.Y + 12, stroke: "#202020", "stroke-width": 4 }, g);
+      el("circle", { cx: p.X, cy: p.Y, r: 29, fill: mono ? "#ffffff" : "#d9d7cb", stroke: base, "stroke-width": 2.2 }, g);
+      el("circle", { cx: p.X, cy: p.Y, r: 17, fill: "none", stroke: mono ? "#888888" : "#8a8a80", "stroke-width": 1.6 }, g);
+      el("line", { x1: p.X - 12, y1: p.Y - 12, x2: p.X + 12, y2: p.Y + 12, stroke: base, "stroke-width": 4 }, g);
     }
     return;
   }
   if (kind === "dip" || kind === "module") {
     const p1 = pts.find((p) => p.id === "1" || p.id === "L1");
-    if (p1) el("circle", { cx: p1.X, cy: p1.Y, r: 3, fill: "#202020" }, g);
+    if (p1) el("circle", { cx: p1.X, cy: p1.Y, r: 3, fill: base }, g);
   }
 }
