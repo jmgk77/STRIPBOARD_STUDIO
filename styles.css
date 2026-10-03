@@ -204,7 +204,9 @@ dialog pre {
   border-radius: 999px;
   background: #2b3542;
   border: 1px solid var(--line);
+  cursor: pointer;
 }
+.chip.sel { border-color: #2a9d5f; background: #24402c; color: #d6f5e0; }
 .chipx {
   border: none;
   background: transparent;

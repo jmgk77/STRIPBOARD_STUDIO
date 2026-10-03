@@ -1,7 +1,7 @@
 // Application state and interactions. Renders through ui/scene.js and mutates the model
 // in core/. Undo/redo is whole-project snapshots taken before each change.
 
-import { Component, Project, pinLabel, pinKey } from "../core/model.js";
+import { Component, Project, pinLabel, pinKey, splitPin } from "../core/model.js";
 import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } from "../core/library.js";
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
@@ -128,9 +128,17 @@ export class App {
       pins.className = "netpins";
       if (net.pins.size === 0) pins.innerHTML = '<span class="muted">(no pins)</span>';
       for (const key of [...net.pins].sort()) {
+        const ref = splitPin(key).ref;
         const chip = document.createElement("span");
-        chip.className = "chip";
+        chip.className = "chip" + (ref === this.selected ? " sel" : "");
+        chip.title = "click to select this component";
         chip.appendChild(document.createTextNode(pinLabel(this.project, key)));
+        chip.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.selected = ref;
+          this.selectedNet = net.id;
+          this.render();
+        });
         const x = document.createElement("button");
         x.className = "chipx";
         x.textContent = "✕";
