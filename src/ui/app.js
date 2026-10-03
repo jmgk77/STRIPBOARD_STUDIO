@@ -821,15 +821,19 @@ export class App {
     this.mode = mode;
     if (mode !== "connect") this.pending = null;
     if (mode !== "jumper") this.jumperStart = null;
-    const buttons = { connect: "connect", cut: "addCut", jumper: "addJumper" };
-    for (const [m, id] of Object.entries(buttons)) {
-      const el = document.getElementById(id);
-      if (el) el.classList.toggle("active", mode === m);
-    }
+    this._syncModeButtons();
     this.render();
     if (mode === "connect") this._status("connect: click a first pin, then a second pin (Esc cancels)");
     else if (mode === "cut") this._status("cut tool: click a hole to cut that strip; click it again to remove the cut");
     else if (mode === "jumper") this._status("jumper tool: click a hole, then another in the same column (Esc cancels)");
+  }
+
+  _syncModeButtons() {
+    const buttons = { connect: "connect", cut: "addCut", jumper: "addJumper" };
+    for (const [m, id] of Object.entries(buttons)) {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle("active", this.mode === m);
+    }
   }
 
   /** True when the mode is one of the manual "wire" tools (cut / jumper). */
@@ -926,9 +930,12 @@ export class App {
     this.snapshot();
     this.project.jumpers.push({ x, ya: lo, yb: hi, fixed: true });
     this.project.removedJumpers.delete(`${x},${lo},${hi}`);
+    // one jumper per activation: drop back to Select so the next click won't start another
+    this.mode = "select";
     this.jumperStart = null;
+    this._syncModeButtons();
     this._afterStructuralChange(false);
-    this._status(`jumper added ${this._cellName(x, lo)}-${this._cellName(x, hi)} (fixed)`);
+    this._status(`jumper added ${this._cellName(x, lo)}-${this._cellName(x, hi)} (fixed) — back to Select`);
   }
 
   /** Mirror the router/DRC keepouts so a hand-drawn jumper is physically sane. */
