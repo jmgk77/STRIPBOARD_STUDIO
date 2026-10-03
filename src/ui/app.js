@@ -6,7 +6,7 @@ import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } 
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
 import { optimize as optimizeLayout, COMPACT_WEIGHTS } from "../core/optimize.js";
-import { contentBounds, rotateLocal, rowLabel, rowLetter } from "../core/geometry.js";
+import { componentBody, componentPins, contentBounds, rotateLocal, rowLabel, rowLetter } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
 import { exportNetlist } from "../core/netlist.js";
 import { alignCuts } from "../core/align.js";
@@ -24,6 +24,7 @@ export class App {
     this.view = "front";
     this.selected = null;
     this.pending = null;
+    this.jumperStart = null; // first hole of a jumper being drawn by hand
     this.mode = "select";
     this.solved = false;
     this.showNames = true;
@@ -99,6 +100,7 @@ export class App {
       view: this.view,
       selected: this.selected,
       pending: this.pending,
+      jumperStart: this.jumperStart,
       mode: this.mode,
       solved: project.jumpers.length > 0 || project.cuts.size > 0,
       showNames: this.showNames,
@@ -761,10 +763,17 @@ export class App {
     if (this.selectedWire) {
       const w = this.selectedWire;
       this.snapshot();
-      if (w.kind === "jumper") this.project.jumpers.splice(w.i, 1);
-      else {
+      if (w.kind === "jumper") {
+        const j = this.project.jumpers[w.i];
+        if (j) {
+          // remember the removal so a later Solve does not just put it back
+          this.project.removedJumpers.add(`${j.x},${j.ya},${j.yb}`);
+          this.project.jumpers.splice(w.i, 1);
+        }
+      } else {
         this.project.cuts.delete(w.key);
         this.project.fixedCuts.delete(w.key);
+        this.project.removedCuts.add(w.key); // "delete stays deleted" for Solve
       }
       this.selectedWire = null;
       this._afterStructuralChange(false);
@@ -811,9 +820,142 @@ export class App {
     if (!this._guard()) return;
     this.mode = mode;
     if (mode !== "connect") this.pending = null;
-    document.getElementById("connect").classList.toggle("active", mode === "connect");
+    if (mode !== "jumper") this.jumperStart = null;
+    const buttons = { connect: "connect", cut: "addCut", jumper: "addJumper" };
+    for (const [m, id] of Object.entries(buttons)) {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle("active", mode === m);
+    }
     this.render();
     if (mode === "connect") this._status("connect: click a first pin, then a second pin (Esc cancels)");
+    else if (mode === "cut") this._status("cut tool: click a hole to cut that strip; click it again to remove the cut");
+    else if (mode === "jumper") this._status("jumper tool: click a hole, then another in the same column (Esc cancels)");
+  }
+
+  /** True when the mode is one of the manual "wire" tools (cut / jumper). */
+  _isToolMode() {
+    return this.mode === "cut" || this.mode === "jumper";
+  }
+
+  /** Human cell name (row letter + column), matching the Problems panel. */
+  _cellName(x, y) {
+    return `${rowLabel(y, this.project.rows)}${x}`;
+  }
+
+  /** Pin key occupying a hole, or null. Used to keep cuts/jumpers off pins. */
+  _pinAt(x, y) {
+    for (const comp of this.project.components.values()) {
+      const part = LIBRARY.get(comp.part);
+      if (!part) continue;
+      for (const p of componentPins(comp, part)) {
+        if (p.x === x && p.y === y) return `${comp.ref}.${p.id}`;
+      }
+    }
+    return null;
+  }
+
+  /** Cell under the pointer, or null when the click lands off the board. */
+  _cutCellAt(evt) {
+    const { x, y } = this._cellAt(evt);
+    if (x < 1 || x > this.project.cols || y < 1 || y > this.project.rows) return null;
+    return { x, y };
+  }
+
+  _handleToolClick(evt) {
+    const cell = this._cutCellAt(evt);
+    if (!cell) return;
+    if (this.mode === "cut") this._addCut(cell.x, cell.y);
+    else this._addJumperClick(cell.x, cell.y);
+  }
+
+  _addCut(x, y) {
+    const key = `${x},${y}`;
+    const name = this._cellName(x, y);
+    if (this.project.cuts.has(key)) {
+      // toggle: clicking an existing cut removes it (and remembers that choice)
+      this.snapshot();
+      this.project.cuts.delete(key);
+      this.project.fixedCuts.delete(key);
+      this.project.removedCuts.add(key);
+      this._afterStructuralChange(false);
+      this._status(`cut removed at ${name}`);
+      return;
+    }
+    const pin = this._pinAt(x, y);
+    if (pin) {
+      this._status(`cannot cut ${name}: ${pin} sits there`);
+      return;
+    }
+    this.snapshot();
+    this.project.cuts.add(key);
+    this.project.fixedCuts.add(key); // a hand-placed cut is fixed: Solve keeps it
+    this.project.removedCuts.delete(key);
+    this._afterStructuralChange(false);
+    this._status(`cut added at ${name} (fixed)`);
+  }
+
+  _addJumperClick(x, y) {
+    const name = this._cellName(x, y);
+    if (!this.jumperStart) {
+      if (this._pinAt(x, y)) {
+        this._status(`a jumper cannot end on ${name}: a pin is there`);
+        return;
+      }
+      this.jumperStart = { x, y };
+      this.render();
+      this._status(`jumper: click the other hole in column ${x} (Esc cancels)`);
+      return;
+    }
+    const { x: x0, y: y0 } = this.jumperStart;
+    if (x !== x0) {
+      this._status("a jumper is a vertical wire — pick a hole in the same column");
+      return;
+    }
+    const lo = Math.min(y0, y);
+    const hi = Math.max(y0, y);
+    if (lo === hi) {
+      this.jumperStart = null;
+      this.render();
+      return;
+    }
+    const bad = this._jumperBlocker(x, lo, hi);
+    if (bad) {
+      this._status(`cannot add jumper: ${bad}`);
+      return;
+    }
+    this.snapshot();
+    this.project.jumpers.push({ x, ya: lo, yb: hi, fixed: true });
+    this.project.removedJumpers.delete(`${x},${lo},${hi}`);
+    this.jumperStart = null;
+    this._afterStructuralChange(false);
+    this._status(`jumper added ${this._cellName(x, lo)}-${this._cellName(x, hi)} (fixed)`);
+  }
+
+  /** Mirror the router/DRC keepouts so a hand-drawn jumper is physically sane. */
+  _jumperBlocker(x, lo, hi) {
+    const jumperEnds = new Set();
+    for (const j of this.project.jumpers) {
+      jumperEnds.add(`${j.x},${j.ya}`);
+      jumperEnds.add(`${j.x},${j.yb}`);
+    }
+    for (let y = lo; y <= hi; y++) {
+      const cell = `${x},${y}`;
+      const pin = this._pinAt(x, y);
+      if (pin) return `${this._cellName(x, y)} has the pin ${pin}`;
+      if (y !== lo && y !== hi && jumperEnds.has(cell)) return `another jumper already ends at ${this._cellName(x, y)}`;
+    }
+    if (jumperEnds.has(`${x},${lo}`) || jumperEnds.has(`${x},${hi}`)) return "a jumper already ends in that hole";
+    // No solder room under a flush body.
+    for (const comp of this.project.components.values()) {
+      const part = LIBRARY.get(comp.part);
+      if (!part || part.wiresUnder) continue;
+      const b = componentBody(comp, part);
+      if (!b) continue;
+      for (let y = lo; y <= hi; y++) {
+        if (x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1) return `${comp.ref} covers ${this._cellName(x, y)}`;
+      }
+    }
+    return null;
   }
 
   handlePinClick(key) {
@@ -1310,12 +1452,15 @@ export class App {
     document.getElementById("netCopy").addEventListener("click", () => this._copyPre("netText", "netlist"));
     document.getElementById("netDownload").addEventListener("click", () => this._downloadNetlist());
     on("connect", () => this.setMode(this.mode === "connect" ? "select" : "connect"));
+    on("addCut", () => this.setMode(this.mode === "cut" ? "select" : "cut"));
+    on("addJumper", () => this.setMode(this.mode === "jumper" ? "select" : "jumper"));
     document.getElementById("names").addEventListener("change", (e) => {
       this.showNames = e.target.checked;
       this.render();
     });
     document.getElementById("schematic").addEventListener("change", (e) => {
       this.schematic = e.target.checked;
+      if (this.schematic && this._isToolMode()) this.setMode("select");
       this.render();
     });
     on("unfix", () => this.toggleFixSelected());
@@ -1403,6 +1548,10 @@ export class App {
         }
       }
 
+      if (editing && this._isToolMode() && !this.schematic) {
+        this._handleToolClick(evt);
+        return;
+      }
       const pinEl = evt.target.closest("[data-pin]");
       if (pinEl && this.mode === "connect" && editing) {
         this.handlePinClick(`${pinEl.dataset.ref}.${pinEl.dataset.pin}`);
@@ -1611,6 +1760,7 @@ export class App {
 
   _clearSelection() {
     this.pending = null;
+    this.jumperStart = null;
     this.selected = null;
     this.selectedWire = null;
     this.selectedNet = null;

@@ -48,6 +48,7 @@ export function render(svg, state) {
   const { project, library, view, selected, pending, solved, showNames = true } = state;
   const focusNets = state.focusNets ?? new Set();
   const selectedWire = state.selectedWire ?? null;
+  const jumperStart = state.jumperStart ?? null; // first hole of a hand-drawn jumper
   const origin = state.origin ?? { row: 1, col: 1 }; // printed label origin (default A1)
   const colText = (x) => String(origin.col + x - 1);
   const rowText = (y) => rowLetter(origin.row + rows - y);
@@ -178,6 +179,12 @@ export function render(svg, state) {
     const text = net?.label || (focusNets.has(j.net) ? net?.id : null);
     if (text) el("text", { x: x + 8, y: (y1 + y2) / 2 + 3, "font-size": 9, fill: C.text, "pointer-events": "none" }, g).textContent = text;
   });
+
+  // the first hole of a jumper being drawn by hand
+  if (jumperStart) {
+    el("circle", { cx: sx(jumperStart.x), cy: sy(jumperStart.y), r: 9, fill: "none", stroke: C.sel, "stroke-width": 3, "pointer-events": "none" }, svg);
+    el("circle", { cx: sx(jumperStart.x), cy: sy(jumperStart.y), r: 4.5, fill: C.sel, "pointer-events": "none" }, svg);
+  }
 
   // components
   if (L.parts !== false) {

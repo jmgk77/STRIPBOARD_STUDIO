@@ -64,6 +64,8 @@ export class Project {
     this.cuts = new Set(); // "x,y" cells where the copper is broken
     this.fixedCuts = new Set(); // the subset the user pinned; Solve keeps these
     this.jumpers = []; // { x, ya, yb, net?, fixed? }
+    this.removedCuts = new Set(); // "x,y" cells the user deleted; Solve must not re-cut them
+    this.removedJumpers = new Set(); // "x,ya,yb" jumpers the user deleted; Solve must not re-add
     this.customParts = []; // specs of user-defined pin bars (see library.buildBarPart)
   }
 
@@ -163,6 +165,8 @@ export class Project {
       cuts: [...this.cuts].sort(),
       fixedCuts: [...this.fixedCuts].sort(),
       jumpers: this.jumpers.map((j) => ({ ...j })),
+      removedCuts: [...this.removedCuts].sort(),
+      removedJumpers: [...this.removedJumpers].sort(),
       customParts: this.customParts.map((p) => ({ ...p })),
     };
   }
@@ -180,6 +184,8 @@ export class Project {
       if (j.fixed) out.fixed = true;
       return out;
     });
+    p.removedCuts = new Set(o.removedCuts ?? []);
+    p.removedJumpers = new Set(o.removedJumpers ?? []);
     p.customParts = (o.customParts ?? []).map((s) => ({ ...s }));
     return p;
   }

@@ -71,12 +71,14 @@ export function route(project, library, { maxAttempts = Infinity } = {}) {
 
   const fixedCuts = project.fixedCuts ?? new Set();
   const fixedJumpers = (project.jumpers ?? []).filter((j) => j.fixed && j.net);
+  const removedCuts = project.removedCuts ?? new Set();
+  const removedJumpers = project.removedJumpers ?? new Set();
 
   let best = null;
   let tried = 0;
   for (const order of orderings([...pinsByNet.keys()], pinsByNet)) {
     if (tried++ >= maxAttempts) break;
-    const attempt = runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts, fixedJumpers);
+    const attempt = runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts, fixedJumpers, removedCuts, removedJumpers);
     if (best === null || attempt.score < best.score) best = attempt;
     if (best.errors === 0) break; // a valid result; good enough
   }
@@ -92,7 +94,7 @@ export function route(project, library, { maxAttempts = Infinity } = {}) {
 
 // -- one routing attempt ------------------------------------------------------
 
-function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new Set(), fixedJumpers = []) {
+function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new Set(), fixedJumpers = [], removedCuts = new Set(), removedJumpers = new Set()) {
   const { cols, rows } = project;
   const netLabel = new Map(project.nets.map((n) => [n.id, n.label || n.id]));
 
@@ -238,6 +240,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
           const lo = Math.min(y, ny);
           const hi = Math.max(y, ny);
           if (blockedBetween(blk, lo + 1, hi - 1)) continue;
+          if (removedJumpers.has(`${x},${lo},${hi}`)) continue; // user deleted this jumper
           const cost = JUMPER_COST + Math.abs(ny - y);
           const nc = cellId(x, ny);
           if (d + cost < (dist.get(nc) ?? Infinity)) {
@@ -332,7 +335,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
     }
   }
 
-  const cuts = deriveCuts(project, owner, pinAt, diagnostics);
+  const cuts = deriveCuts(project, owner, pinAt, diagnostics, removedCuts);
   for (const c of fixedCuts) cuts.add(c); // keep the user's cuts
   const clone = Project.fromJSON(project.toJSON());
   clone.cuts = cuts;
@@ -365,7 +368,7 @@ function orderings(nets, pinsByNet) {
   return out.map((o) => o.arr);
 }
 
-function deriveCuts(project, owner, pinAt, diagnostics) {
+function deriveCuts(project, owner, pinAt, diagnostics, removedCuts = new Set()) {
   const { cols, rows } = project;
   const netLabel = new Map(project.nets.map((n) => [n.id, n.label || n.id]));
   const cuts = new Set();
@@ -385,7 +388,7 @@ function deriveCuts(project, owner, pinAt, diagnostics) {
         for (const cand of [mid - d, mid + d]) {
           if (cand > a.x && cand < b.x) {
             const c = cellId(cand, y);
-            if (!pinAt.has(c) && !owner.has(c)) {
+            if (!pinAt.has(c) && !owner.has(c) && !removedCuts.has(c)) {
               placed = c;
               break;
             }
