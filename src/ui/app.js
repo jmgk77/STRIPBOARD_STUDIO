@@ -1397,14 +1397,10 @@ export class App {
     }
     if (name === "optimize" || name === "compact" || name === "easy") {
       // Cooperative: the optimizer yields to the event loop so it may take as long as it
-      // needs without freezing the tab (no time limit).
-      const opts =
-        name === "compact"
-          ? { weights: COMPACT_WEIGHTS, maxPasses: 6, maxEvaluations: 300 }
-          : name === "easy"
-            ? { weights: EASY_WEIGHTS, maxPasses: 6, maxEvaluations: 300 }
-            : {};
-      await optimizeAsync(clone, LIBRARY, opts);
+      // needs without freezing the tab (no time limit). All three presets share the same
+      // search budget, so they differ only by their weights (the intended design).
+      const weights = name === "compact" ? COMPACT_WEIGHTS : name === "easy" ? EASY_WEIGHTS : undefined;
+      await optimizeAsync(clone, LIBRARY, { weights, maxPasses: 6, maxEvaluations: 300 });
     }
     // solve / optimize / compact all finish by routing the (possibly optimized) board
     const result = route(clone, LIBRARY);
