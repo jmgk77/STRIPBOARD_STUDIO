@@ -48,7 +48,7 @@ export function render(svg, state) {
   const { project, library, view, selected, pending, solved, showNames = true } = state;
   const selectedNet = state.selectedNet ?? null;
   const selectedWire = state.selectedWire ?? null;
-  const L = state.layers ?? { parts: true, wires: true, cuts: true, copper: true, nets: true };
+  const L = state.layers ?? { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
   const { sx, sy } = makeMapper(state);
   const { cols, rows } = project;
   const width = cols * CELL + PAD * 2;
@@ -61,6 +61,7 @@ export function render(svg, state) {
   el("rect", { x: PAD - CELL / 2, y: PAD - CELL / 2, width: cols * CELL, height: rows * CELL, rx: 4, fill: "#0f5132", stroke: "#062d1c", "stroke-width": 2 }, svg);
 
   const colors = new Map(project.nets.map((n, i) => [n.id, NET_COLORS[i % NET_COLORS.length]]));
+  const netById = new Map(project.nets.map((n) => [n.id, n]));
   const pinNet = new Map(); // "x,y" -> net id (pins that belong to a net)
   for (const net of project.nets) {
     for (const key of net.pins) {
@@ -95,6 +96,30 @@ export function render(svg, state) {
         fill,
         opacity: lit ? 0.85 : stripOpacity,
       }, svg);
+      // name the net on its strip (only when it has a friendly name, or is selected)
+      if (nets.size === 1 && b - a >= 1) {
+        const id = [...nets][0];
+        const net = netById.get(id);
+        const text = net?.label || (selectedNet === id ? net?.id : null);
+        if (text) {
+          el("text", {
+            x: (x1 + x2) / 2, y: sy(y) + 3, "text-anchor": "middle", "font-size": 9,
+            fill: "#101010", "pointer-events": "none",
+          }, svg).textContent = text;
+        }
+      }
+    }
+  }
+
+  // a faint 5x5-hole grid to help measure and cut by hand
+  if (L.grid !== false) {
+    const edge = PAD - CELL / 2;
+    const size = { w: cols * CELL, h: rows * CELL };
+    for (let k = 5; k < cols; k += 5) {
+      el("line", { x1: edge + k * CELL, y1: edge, x2: edge + k * CELL, y2: edge + size.h, stroke: "#ffffff", "stroke-opacity": 0.2, "stroke-width": 1, "stroke-dasharray": "3 5" }, svg);
+    }
+    for (let k = 5; k < rows; k += 5) {
+      el("line", { x1: edge, y1: edge + k * CELL, x2: edge + size.w, y2: edge + k * CELL, stroke: "#ffffff", "stroke-opacity": 0.2, "stroke-width": 1, "stroke-dasharray": "3 5" }, svg);
     }
   }
 
@@ -117,10 +142,14 @@ export function render(svg, state) {
     const lit = sel || (selectedNet && j.net === selectedNet);
     const g = el("g", { "data-wire": i, class: "wire" }, svg);
     el("line", { x1: x, y1, x2: x, y2, stroke: "transparent", "stroke-width": 16 }, g);
+    if (j.fixed) el("line", { x1: x, y1, x2: x, y2, stroke: "#ffffff", "stroke-width": 6, "stroke-linecap": "round", opacity: 0.9 }, g);
     el("line", { x1: x, y1, x2: x, y2, stroke: lit ? "#ffd54a" : "#4c9aff", "stroke-width": sel ? 4.5 : 3, "stroke-linecap": "round" }, g);
     for (const cy of [y1, y2]) {
       el("circle", { cx: x, cy, r: 6, fill: lit ? "#ffd54a" : "#4c9aff", stroke: "#0b2b52", "stroke-width": 1.5 }, g);
     }
+    const net = netById.get(j.net);
+    const text = net?.label || (selectedNet === j.net ? net?.id : null);
+    if (text) el("text", { x: x + 8, y: (y1 + y2) / 2 + 3, "font-size": 9, fill: "#123", "pointer-events": "none" }, g).textContent = text;
   });
 
   // components
@@ -141,6 +170,7 @@ export function render(svg, state) {
     const sel = selectedWire?.kind === "cut" && selectedWire.key === c;
     const g = el("g", { "data-cut": c, class: "cut" }, svg);
     el("rect", { x: cx - r - 5, y: cy - r - 5, width: 2 * (r + 5), height: 2 * (r + 5), fill: "transparent" }, g);
+    if (project.fixedCuts?.has(c)) el("circle", { cx, cy, r: r + 3, fill: "#ffffff", opacity: 0.9 }, g);
     el("line", { x1: cx - r, y1: cy - r, x2: cx + r, y2: cy + r, stroke: sel ? "#ffd54a" : "#ff5555", "stroke-width": sel ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
     el("line", { x1: cx - r, y1: cy + r, x2: cx + r, y2: cy - r, stroke: sel ? "#ffd54a" : "#ff5555", "stroke-width": sel ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
   }

@@ -120,6 +120,24 @@ export function analyze(project, library) {
     if (nets.size > 1) shorts.push({ level: "error", code: "short", message: `different nets share copper (${node}): ${[...nets].join(", ")}` });
   }
 
+  // Design warnings (not fatal): spare pins and pointless one-pin nets.
+  const assigned = new Set();
+  for (const net of project.nets) for (const key of net.pins) assigned.add(key);
+  const unassigned = [...pinPos.keys()].filter((k) => !assigned.has(k));
+  if (unassigned.length) {
+    const sample = unassigned.slice(0, 6).join(", ");
+    issues.push({
+      level: "warn",
+      code: "unconnected-pins",
+      message: `${unassigned.length} pin(s) not connected to any net: ${sample}${unassigned.length > 6 ? ", …" : ""}`,
+    });
+  }
+  for (const net of project.nets) {
+    if (net.pins.size === 1) {
+      issues.push({ level: "warn", code: "single-pin-net", message: `net ${net.id} has only one pin` });
+    }
+  }
+
   // Physical collisions that make a board unbuildable.
   const occ = new Map();
   const add = (x, y, item) => {

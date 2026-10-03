@@ -24,8 +24,9 @@ export class App {
     this.showNames = true;
     this.selectedNet = null;
     this.selectedWire = null;
-    this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true };
+    this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
     this._editBefore = null;
+    this.fileName = null;
     this.issues = [];
     this.history = [];
     this.redoStack = [];
@@ -392,6 +393,20 @@ export class App {
     this._afterStructuralChange();
   }
 
+  unfixSelected() {
+    const w = this.selectedWire;
+    if (!w) return;
+    this.snapshot();
+    if (w.kind === "jumper") {
+      const j = this.project.jumpers[w.i];
+      if (j) j.fixed = false;
+    } else {
+      this.project.fixedCuts.delete(w.key);
+    }
+    this._afterStructuralChange(false);
+    this._status("unfixed (Solve may re-route it)");
+  }
+
   setMode(mode) {
     this.mode = mode;
     if (mode !== "connect") this.pending = null;
@@ -543,6 +558,7 @@ export class App {
     const cols = Number(document.getElementById("cols").value) || 34;
     const rows = Number(document.getElementById("rows").value) || 26;
     this.project = new Project({ cols, rows });
+    this.fileName = null;
     this.selected = null;
     this.pending = null;
     this.solved = false;
@@ -553,19 +569,27 @@ export class App {
   }
 
   save() {
+    if (!this.fileName) {
+      const name = window.prompt("Save board as", this.project.title || "board");
+      if (name == null) return;
+      this.fileName = (name.trim() || "board").replace(/\.json$/i, "");
+      this.project.title = this.fileName;
+    }
     const blob = new Blob([JSON.stringify(this.project.toJSON(), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${this.project.title || "board"}.json`;
+    a.download = `${this.fileName}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    this._status(`saved ${this.fileName}.json`);
   }
 
   async open(file) {
     const text = await file.text();
     this.project = Project.fromJSON(JSON.parse(text));
     registerProjectParts(this.project.customParts);
+    this.fileName = (file.name || "board").replace(/\.json$/i, "");
     document.getElementById("cols").value = this.project.cols;
     document.getElementById("rows").value = this.project.rows;
     this.selected = null;
@@ -607,7 +631,8 @@ export class App {
       this.showNames = e.target.checked;
       this.render();
     });
-    const layerIds = { "lc-parts": "parts", "lc-wires": "wires", "lc-cuts": "cuts", "lc-copper": "copper", "lc-nets": "nets" };
+    on("unfix", () => this.unfixSelected());
+    const layerIds = { "lc-parts": "parts", "lc-wires": "wires", "lc-cuts": "cuts", "lc-copper": "copper", "lc-nets": "nets", "lc-grid": "grid" };
     for (const [id, key] of Object.entries(layerIds)) {
       document.getElementById(id).addEventListener("change", (e) => {
         this.layers[key] = e.target.checked;
