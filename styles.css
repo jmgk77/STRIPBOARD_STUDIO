@@ -217,6 +217,10 @@ dialog pre {
 
 .hoverable { transition: filter 0.08s ease; }
 .hoverable:hover { filter: drop-shadow(0 0 3px rgba(76, 154, 255, 0.9)); }
+
+/* Dragging must not select text in the UI. Inputs stay selectable. */
+.toolbar, #palette, #panel, #canvasWrap svg { user-select: none; }
+input, select, textarea, pre { user-select: text; }
 .chipx {
   border: none;
   background: transparent;

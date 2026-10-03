@@ -63,6 +63,13 @@ export class App {
     document.getElementById("rows").value = this.project.rows;
   }
 
+  /** Smallest board that still contains every component (bodies included) and cut/jumper. */
+  _minBoard() {
+    const b = contentBounds(this.project, LIBRARY);
+    if (!b) return { cols: 4, rows: 4 };
+    return { cols: Math.max(4, b.x1), rows: Math.max(4, b.y1) };
+  }
+
   // -- rendering ----------------------------------------------------------------
 
   render() {
@@ -692,9 +699,11 @@ export class App {
   }
 
   setBoardSize(cols, rows) {
+    const min = this._minBoard();
     this.snapshot();
-    this.project.cols = cols;
-    this.project.rows = rows;
+    this.project.cols = Math.max(min.cols, Math.min(100, Math.round(cols) || 1));
+    this.project.rows = Math.max(min.rows, Math.min(60, Math.round(rows) || 1));
+    this._syncSizeInputs();
     this._afterStructuralChange(true);
   }
 
@@ -821,6 +830,7 @@ export class App {
       // input is destroyed before its change event fires and the edit is lost).
       const active = document.activeElement;
       if (active && ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName)) active.blur();
+      evt.preventDefault(); // stop text selection while dragging on the board
 
       const handleEl = evt.target.closest("[data-handle]");
       if (handleEl) {
@@ -917,8 +927,9 @@ export class App {
     this.svg.addEventListener("pointermove", (evt) => {
       if (this.boardResize) {
         const cell = this._cellAt(evt);
-        if (this.boardResize.axis === "right") this.project.cols = Math.max(4, Math.min(100, cell.x));
-        else this.project.rows = Math.max(4, Math.min(60, cell.y));
+        const min = this._minBoard();
+        if (this.boardResize.axis === "right") this.project.cols = Math.max(min.cols, Math.min(100, cell.x));
+        else this.project.rows = Math.max(min.rows, Math.min(60, cell.y));
         this._syncSizeInputs();
         this.boardResize.moved = true;
         this.render();
