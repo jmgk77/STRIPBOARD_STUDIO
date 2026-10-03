@@ -518,17 +518,16 @@ export class App {
     }
     const row = document.createElement("div");
     row.className = "pinrow";
-    const unfix = document.createElement("button");
-    unfix.className = "minibtn";
-    unfix.textContent = "Unfix";
-    unfix.disabled = !fixed;
-    unfix.title = "release this item so Solve may change it";
-    unfix.addEventListener("click", () => this.unfixSelected());
+    const fix = document.createElement("button");
+    fix.className = "minibtn";
+    fix.textContent = fixed ? "Unfix" : "Fix";
+    fix.title = fixed ? "release so Solve may change it" : "pin it so Solve keeps it";
+    fix.addEventListener("click", () => this.toggleFixSelected());
     const del = document.createElement("button");
     del.className = "minibtn";
     del.textContent = "Delete";
     del.addEventListener("click", () => this.deleteSelected());
-    row.appendChild(unfix);
+    row.appendChild(fix);
     row.appendChild(del);
     box.appendChild(row);
   }
@@ -624,6 +623,10 @@ export class App {
   }
 
   lockSelected() {
+    if (this.selectedWire) {
+      this.toggleFixSelected(); // L fixes/unfixes a jumper or a cut too
+      return;
+    }
     const comp = this.selected && this.project.components.get(this.selected);
     if (!comp) return;
     this.snapshot();
@@ -659,18 +662,25 @@ export class App {
     this._afterStructuralChange();
   }
 
-  unfixSelected() {
+  toggleFixSelected() {
     const w = this.selectedWire;
     if (!w) return;
     this.snapshot();
+    let fixed;
     if (w.kind === "jumper") {
       const j = this.project.jumpers[w.i];
-      if (j) j.fixed = false;
-    } else {
+      if (!j) return;
+      j.fixed = !j.fixed;
+      fixed = j.fixed;
+    } else if (this.project.fixedCuts.has(w.key)) {
       this.project.fixedCuts.delete(w.key);
+      fixed = false;
+    } else {
+      this.project.fixedCuts.add(w.key);
+      fixed = true;
     }
     this._afterStructuralChange(false);
-    this._status("unfixed (Solve may re-route it)");
+    this._status(fixed ? "fixed (Solve keeps it)" : "released (Solve may change it)");
   }
 
   setMode(mode) {
@@ -942,7 +952,7 @@ export class App {
       this.schematic = e.target.checked;
       this.render();
     });
-    on("unfix", () => this.unfixSelected());
+    on("unfix", () => this.toggleFixSelected());
     const layerIds = { "lc-parts": "parts", "lc-wires": "wires", "lc-cuts": "cuts", "lc-copper": "copper", "lc-nets": "nets", "lc-grid": "grid" };
     for (const [id, key] of Object.entries(layerIds)) {
       document.getElementById(id).addEventListener("change", (e) => {
