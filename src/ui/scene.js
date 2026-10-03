@@ -157,7 +157,7 @@ export function render(svg, state) {
     for (const comp of project.components.values()) {
       const part = library.get(comp.part);
       if (!part) continue;
-      drawComponent(svg, comp, part, state, sx, sy);
+      drawComponent(svg, comp, part, state, sx, sy, colors);
     }
   }
 
@@ -239,8 +239,10 @@ function drawRatsnest(svg, state, sx, sy, colors) {
   }
 }
 
-function drawComponent(svg, comp, part, state, sx, sy) {
+function drawComponent(svg, comp, part, state, sx, sy, colors) {
   const { project, selected, pending } = state;
+  const isSel = selected === comp.ref;
+  const wired = part.pins.some((p) => project.netOf(`${comp.ref}.${p.id}`));
   const pts = componentPins(comp, part).map((p) => ({ id: p.id, X: sx(p.x), Y: sy(p.y), cx: p.x, cy: p.y }));
   const body = componentBody(comp, part);
   let bx0;
@@ -269,19 +271,20 @@ function drawComponent(svg, comp, part, state, sx, sy) {
   const g = el("g", { "data-ref": comp.ref, class: "component" }, svg);
   el("rect", {
     x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0, rx: 5,
-    fill: "#f0efe9", "fill-opacity": 0.5,
-    stroke: comp.locked ? "#b03ca0" : (selected === comp.ref ? "#ffcc33" : "#202020"),
-    "stroke-width": selected === comp.ref ? 2.5 : 1.6,
+    fill: isSel && wired ? "#cfe9cf" : "#f0efe9", "fill-opacity": 0.5,
+    stroke: comp.locked ? "#b03ca0" : isSel ? (wired ? "#2a9d5f" : "#ffcc33") : "#202020",
+    "stroke-width": isSel ? 2.5 : 1.6,
   }, g);
 
   drawGlyph(g, part, pts);
 
-  // pins: visible dot (no events) ...
+  // pins: visible dot (no events); when this part is selected, colour wired pins by net
   for (const p of pts) {
     const isPending = pending && pending === `${comp.ref}.${p.id}`;
+    const net = isSel ? project.netOf(`${comp.ref}.${p.id}`) : null;
     el("circle", {
       cx: p.X, cy: p.Y, r: isPending ? 6.5 : 4.5,
-      fill: isPending ? "#ffcc33" : "#202020",
+      fill: isPending ? "#ffcc33" : net ? colors.get(net.id) || "#202020" : "#202020",
       stroke: isPending ? "#ffaa00" : "#202020", "stroke-width": isPending ? 2.5 : 1,
       "pointer-events": "none",
     }, g);
