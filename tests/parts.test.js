@@ -47,6 +47,15 @@ test("terminal bodies collide when placed adjacent", () => {
   assert.ok(analyze(p, LIBRARY).issues.some((i) => i.code === "overlap"));
 });
 
+test("module presets are registered with geometry", () => {
+  const esp = LIBRARY.get("esp32-devkit");
+  assert.equal(esp.pins.length, 30);
+  assert.deepEqual(esp.pins.find((p) => p.id === "VIN"), { id: "VIN", x: 9, y: 0 });
+  assert.equal(LIBRARY.get("arduino-nano").pins.length, 30);
+  assert.equal(LIBRARY.get("uln2803").pins.length, 18);
+  assert.equal(LIBRARY.get("pcf8574").pins.length, 12);
+});
+
 test("custom part specs survive a project JSON round-trip", () => {
   const p = new Project();
   p.customParts.push({ name: "custom-x", label: "X", count: 6, gap: 4, doubleRow: true, prefix: "", leftPrefix: "L", rightPrefix: "R" });

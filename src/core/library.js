@@ -133,6 +133,43 @@ register(new PartDef({
   body: { x: -1, y: -1, w: 3, h: 10 }, wiresUnder: false,
 }));
 
+// --- presets (common dev boards / breakout boards) ---------------------------
+// Pin names are a starting point for a popular board revision; rename them to match
+// your exact board (Selection panel), or build a custom pin bar instead.
+
+register(new PartDef({
+  name: "esp32-devkit", label: "ESP32 DevKit V1 (30-pin)", kind: "module",
+  pins: dualRow(
+    ["EN", "VP", "VN", "D34", "D35", "D32", "D33", "D25", "D26", "D27", "D14", "D12", "GND1", "D13", "D9"],
+    ["VIN", "GND2", "D23", "D22", "TX0", "RX0", "D21", "GND3", "D19", "D18", "D5", "TX2", "RX2", "D4", "D2"],
+    9,
+  ),
+  body: { x: -1, y: -1, w: 11, h: 17 }, wiresUnder: false,
+}));
+register(new PartDef({
+  name: "arduino-nano", label: "Arduino Nano", kind: "module",
+  pins: dualRow(
+    ["D13", "3V3", "AREF", "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "5V", "RST1", "GND1", "VIN"],
+    ["D12", "D11", "D10", "D9", "D8", "D7", "D6", "D5", "D4", "D3", "D2", "GND2", "RST2", "RX0", "TX1"],
+    6,
+  ),
+  body: { x: -1, y: -1, w: 8, h: 17 }, wiresUnder: false,
+}));
+register(new PartDef({
+  name: "uln2803", label: "ULN2803 (DIP-18)", kind: "dip",
+  pins: dualRow(
+    ["1B", "2B", "3B", "4B", "5B", "6B", "7B", "8B", "GND"],
+    ["COM", "1C", "2C", "3C", "4C", "5C", "6C", "7C", "8C"],
+    3,
+  ),
+  body: { x: 1, y: 0, w: 2, h: 9 }, wiresUnder: false,
+}));
+register(new PartDef({
+  name: "pcf8574", label: "PCF8574 module", kind: "module",
+  pins: dualRow(["VCC", "GND", "SDA", "SCL"], ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7"], 6),
+  body: { x: -1, y: -1, w: 8, h: 10 }, wiresUnder: false,
+}));
+
 export function listParts() {
   return [...LIBRARY.values()];
 }

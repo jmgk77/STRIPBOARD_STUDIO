@@ -28,6 +28,7 @@ export class App {
     this.selectedWire = null;
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
     this.schematic = false;
+    this._editingPart = null;
     this._editBefore = null;
     this.fileName = null;
     this.issues = [];
@@ -104,9 +105,34 @@ export class App {
     box.innerHTML = "";
     for (const part of listParts()) {
       const item = document.createElement("div");
-      item.className = "item";
-      item.textContent = part.label;
-      item.addEventListener("click", () => this.addPart(part.name));
+      item.className = "item pal";
+      const label = document.createElement("span");
+      label.className = "grow";
+      label.textContent = part.label;
+      label.title = "click to add";
+      label.addEventListener("click", () => this.addPart(part.name));
+      item.appendChild(label);
+      const spec = this.project.customParts.find((s) => s.name === part.name);
+      if (spec) {
+        const edit = document.createElement("button");
+        edit.className = "minibtn";
+        edit.textContent = "✎";
+        edit.title = "edit this pin bar";
+        edit.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.openEditPart(spec);
+        });
+        const del = document.createElement("button");
+        del.className = "minibtn";
+        del.textContent = "✕";
+        del.title = "delete this pin bar";
+        del.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.deletePart(part.name);
+        });
+        item.appendChild(edit);
+        item.appendChild(del);
+      }
       box.appendChild(item);
     }
   }
@@ -453,6 +479,8 @@ export class App {
   }
 
   openNewPart() {
+    this._editingPart = null;
+    document.getElementById("partTitle").textContent = "New pin bar";
     document.getElementById("pLabel").value = "Header";
     document.getElementById("pDouble").value = "no";
     document.getElementById("pCount").value = 8;
@@ -462,6 +490,32 @@ export class App {
     document.getElementById("pRight").value = "R";
     this.updatePartForm();
     document.getElementById("partDlg").showModal();
+  }
+
+  openEditPart(spec) {
+    this._editingPart = spec;
+    document.getElementById("partTitle").textContent = "Edit pin bar";
+    document.getElementById("pLabel").value = spec.label || "";
+    document.getElementById("pDouble").value = spec.doubleRow ? "yes" : "no";
+    document.getElementById("pCount").value = spec.count || 1;
+    document.getElementById("pGap").value = spec.gap || 3;
+    document.getElementById("pPrefix").value = spec.prefix || "";
+    document.getElementById("pLeft").value = spec.leftPrefix || "L";
+    document.getElementById("pRight").value = spec.rightPrefix || "R";
+    this.updatePartForm();
+    document.getElementById("partDlg").showModal();
+  }
+
+  deletePart(name) {
+    if ([...this.project.components.values()].some((c) => c.part === name)) {
+      this._status(`cannot delete ${name}: a component still uses it`);
+      return;
+    }
+    this.snapshot();
+    this.project.customParts = this.project.customParts.filter((s) => s.name !== name);
+    LIBRARY.delete(name);
+    this.render();
+    this._status(`deleted ${name}`);
   }
 
   updatePartForm() {
@@ -480,6 +534,16 @@ export class App {
     const prefix = document.getElementById("pPrefix").value.trim();
     const leftPrefix = document.getElementById("pLeft").value.trim() || "L";
     const rightPrefix = document.getElementById("pRight").value.trim() || "R";
+    if (this._editingPart) {
+      this.snapshot();
+      Object.assign(this._editingPart, { label, count, gap, doubleRow, prefix, leftPrefix, rightPrefix });
+      LIBRARY.set(this._editingPart.name, buildBarPart(this._editingPart));
+      this._editingPart = null;
+      document.getElementById("partDlg").close();
+      this.render();
+      this._status(`updated ${label}`);
+      return;
+    }
     const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bar";
     const base = `custom-${slug}`;
     let name = base;

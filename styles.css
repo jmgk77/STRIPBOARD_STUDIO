@@ -95,6 +95,8 @@ aside h3 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; lette
 }
 .list .item:hover { border-color: #556; }
 .list .item.active { border-color: var(--accent); background: #26364a; }
+.list .item.pal { display: flex; align-items: center; gap: 4px; }
+.list .item.pal .grow { flex: 1; cursor: pointer; }
 .box { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-height: 30px; }
 
 .pill { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 11px; }
