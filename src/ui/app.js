@@ -505,14 +505,14 @@ export class App {
     const b = contentBounds(this.project, LIBRARY);
     if (!b) return;
     this.snapshot();
-    const dx = 2 - b.x0; // leave a 1-hole margin
-    const dy = 2 - b.y0;
+    const dx = 1 - b.x0; // fit the content exactly, no extra leading row/column
+    const dy = 1 - b.y0;
     for (const c of this.project.components.values()) {
       c.x += dx;
       c.y += dy;
     }
-    this.project.cols = b.x1 - b.x0 + 3;
-    this.project.rows = b.y1 - b.y0 + 3;
+    this.project.cols = b.x1 - b.x0 + 1;
+    this.project.rows = b.y1 - b.y0 + 1;
     this.invalidateRouting();
     document.getElementById("cols").value = this.project.cols;
     document.getElementById("rows").value = this.project.rows;
