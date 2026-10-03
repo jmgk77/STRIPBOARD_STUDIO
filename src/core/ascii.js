@@ -89,7 +89,9 @@ export function toAscii(project, library, { margin = 1 } = {}) {
       .join(" ");
     const lock = comp.locked ? " locked" : "";
     const span = part.bendable ? ` span=${comp.span || part.bendable.default}` : "";
-    lines.push(`  ${symbol.get(comp.ref)} ${comp.ref} ${comp.part}@(${comp.x},${comp.y}) rot${comp.rot}${span}${lock}  pins: ${pins}`);
+    const value = comp.value ? ` "${comp.value}"` : "";
+    const group = comp.group ? ` group=${comp.group}` : "";
+    lines.push(`  ${symbol.get(comp.ref)} ${comp.ref} ${comp.part}@(${comp.x},${comp.y}) rot${comp.rot}${value}${span}${lock}${group}  pins: ${pins}`);
   }
   lines.push("");
   lines.push("nets:");
@@ -99,12 +101,32 @@ export function toAscii(project, library, { margin = 1 } = {}) {
   }
   lines.push("");
   const cell = (x, y) => `${x}${rowLabel(y, rows)}`;
+  const cellOf = (c) => {
+    const [x, y] = c.split(",").map(Number);
+    return cell(x, y);
+  };
+  const fixedCuts = project.fixedCuts ?? new Set();
   lines.push(
-    `cuts: ${[...project.cuts].sort().map((c) => { const [x, y] = c.split(",").map(Number); return cell(x, y); }).join(" ") || "(none)"}`,
+    `cuts (* = fixed): ${[...project.cuts].sort().map((c) => cellOf(c) + (fixedCuts.has(c) ? "*" : "")).join(" ") || "(none)"}`,
   );
   lines.push(
-    `jumpers: ${project.jumpers.map((j) => `${cell(j.x, j.ya)}-${cell(j.x, j.yb)}`).join(" ") || "(none)"}`,
+    `jumpers (* = fixed): ${project.jumpers
+      .map((j) => `${cell(j.x, j.ya)}-${cell(j.x, j.yb)}${j.fixed ? "*" : ""}`)
+      .join(" ") || "(none)"}`,
   );
+  const removedCuts = [...(project.removedCuts ?? [])].sort();
+  if (removedCuts.length) lines.push(`removed cuts (tombstones): ${removedCuts.map(cellOf).join(" ")}`);
+  const removedJumpers = [...(project.removedJumpers ?? [])].sort();
+  if (removedJumpers.length) {
+    lines.push(
+      `removed jumpers (tombstones): ${removedJumpers
+        .map((k) => {
+          const [x, ya, yb] = k.split(",").map(Number);
+          return `${cell(x, ya)}-${cell(x, yb)}`;
+        })
+        .join(" ")}`,
+    );
+  }
   lines.push(
     `mounting holes (Ø${project.mountDiameter ?? 3.2}mm): ${[...(project.mountingHoles ?? [])].sort().map((c) => { const [x, y] = c.split(",").map(Number); return cell(x, y); }).join(" ") || "(none)"}`,
   );

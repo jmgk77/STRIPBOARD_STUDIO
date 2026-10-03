@@ -22,6 +22,23 @@ test("ascii shows pins, cuts, jumpers and a legend", () => {
   assert.ok(text.includes("A: J1.1, R1.1"), "net legend");
 });
 
+test("ascii includes value, group, fixed flags and tombstones", () => {
+  const p = new Project({ cols: 12, rows: 8 });
+  p.addComponent(new Component({ ref: "R1", part: "resistor", x: 2, y: 2, value: "10k", group: "pumps" }));
+  p.cuts = new Set(["4,2"]);
+  p.fixedCuts = new Set(["4,2"]);
+  p.jumpers = [{ x: 5, ya: 2, yb: 5, fixed: true }];
+  p.removedCuts = new Set(["6,2"]);
+  p.removedJumpers = new Set(["7,2,5"]);
+  const text = toAscii(p, LIBRARY);
+  assert.ok(text.includes('"10k"'), "value shown");
+  assert.ok(text.includes("group=pumps"), "group shown");
+  assert.ok(text.includes("cuts (* = fixed):") && text.includes("*"), "fixed cut marked");
+  assert.ok(text.includes("jumpers (* = fixed):"), "jumper fixed legend");
+  assert.ok(text.includes("removed cuts (tombstones):"), "removed cuts listed");
+  assert.ok(text.includes("removed jumpers (tombstones):"), "removed jumpers listed");
+});
+
 test("ascii of an empty board is just copper", () => {
   const p = new Project({ cols: 4, rows: 3 });
   const text = toAscii(p, LIBRARY);
