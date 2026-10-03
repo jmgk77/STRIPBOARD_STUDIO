@@ -331,15 +331,16 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
   let by0;
   let by1;
   if (body) {
-    // physical body: edges at the hole boundaries, handled in screen space (mirror-safe)
-    const c0 = sx(body.x0) - CELL / 2;
-    const c1 = sx(body.x1) + CELL / 2;
-    const r0 = sy(body.y0) - CELL / 2;
-    const r1 = sy(body.y1) + CELL / 2;
-    bx0 = Math.min(c0, c1);
-    bx1 = Math.max(c0, c1);
-    by0 = Math.min(r0, r1);
-    by1 = Math.max(r0, r1);
+    // Physical body: map both edges to the screen, then pad outward by half a hole. The pad
+    // must come AFTER min/max, otherwise the mirrored (copper) view collapses the box.
+    const c0 = sx(body.x0);
+    const c1 = sx(body.x1);
+    const r0 = sy(body.y0);
+    const r1 = sy(body.y1);
+    bx0 = Math.min(c0, c1) - CELL / 2;
+    bx1 = Math.max(c0, c1) + CELL / 2;
+    by0 = Math.min(r0, r1) - CELL / 2;
+    by1 = Math.max(r0, r1) + CELL / 2;
   } else {
     const xs = pts.map((p) => p.X);
     const ys = pts.map((p) => p.Y);
@@ -349,7 +350,10 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
     by1 = Math.max(...ys) + CELL * 0.45;
   }
 
-  const g = el("g", { "data-ref": comp.ref, class: "component hoverable", cursor: "pointer" }, svg);
+  // In the copper view, components are a faint ghost so the copper/jumpers stay readable
+  // while you can still see where each part sits (and still click it).
+  const ghost = state.view === "copper" && !mono;
+  const g = el("g", { "data-ref": comp.ref, class: "component hoverable", cursor: "pointer", ...(ghost ? { opacity: "0.38" } : {}) }, svg);
   el("rect", {
     x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0, rx: 5,
     fill: isSel && wired && !mono ? "#cfe9cf" : compFill, "fill-opacity": mono ? 1 : 0.5,
