@@ -10,6 +10,7 @@ import { contentBounds, rotateLocal } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
 import { exportNetlist } from "../core/netlist.js";
 import { render, CELL, PAD } from "./scene.js";
+import { renderSchematic } from "./schematic.js";
 
 const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q", module: "U" };
 
@@ -26,6 +27,7 @@ export class App {
     this.selectedNet = null;
     this.selectedWire = null;
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
+    this.schematic = false;
     this._editBefore = null;
     this.fileName = null;
     this.issues = [];
@@ -74,7 +76,7 @@ export class App {
   // -- rendering ----------------------------------------------------------------
 
   render() {
-    render(this.svg, {
+    const state = {
       project: this.project,
       library: LIBRARY,
       view: this.view,
@@ -88,7 +90,9 @@ export class App {
       focusNets: this._focusedNets(),
       layers: this.layers,
       issues: this.issues,
-    });
+    };
+    if (this.schematic) renderSchematic(this.svg, state);
+    else render(this.svg, state);
     this._renderPalette();
     this._renderNets();
     this._renderProblems();
@@ -815,6 +819,10 @@ export class App {
       this.showNames = e.target.checked;
       this.render();
     });
+    document.getElementById("schematic").addEventListener("change", (e) => {
+      this.schematic = e.target.checked;
+      this.render();
+    });
     on("unfix", () => this.unfixSelected());
     const layerIds = { "lc-parts": "parts", "lc-wires": "wires", "lc-cuts": "cuts", "lc-copper": "copper", "lc-nets": "nets", "lc-grid": "grid" };
     for (const [id, key] of Object.entries(layerIds)) {
@@ -860,6 +868,15 @@ export class App {
       if (active && ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName)) active.blur();
       evt.preventDefault(); // stop text selection while dragging on the board
 
+      const netEl = evt.target.closest("[data-net]");
+      if (netEl) {
+        const id = netEl.dataset.net;
+        this.selectedNet = this.selectedNet === id ? null : id;
+        this.selected = null;
+        this.selectedWire = null;
+        this.render();
+        return;
+      }
       const handleEl = evt.target.closest("[data-handle]");
       if (handleEl) {
         this.boardResize = { axis: handleEl.dataset.handle, before: JSON.stringify(this.project.toJSON()), moved: false };
@@ -933,6 +950,12 @@ export class App {
         this.selectedNet = null;
       }
       const comp = this.project.components.get(ref);
+      if (this.schematic) {
+        // schematic view is read-only: click selects/toggles, never drags
+        if (already) this.selected = null;
+        this.render();
+        return;
+      }
       if (comp.locked) {
         // locked = fixed: no drag; a second click toggles the selection off
         if (already) this.selected = null;
