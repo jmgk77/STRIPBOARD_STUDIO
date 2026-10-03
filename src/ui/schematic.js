@@ -99,20 +99,27 @@ export function renderSchematic(svg, state) {
       if (p) pts.push({ x: it.cx + p.lx, y: it.cy + p.ly });
     }
     if (pts.length < 2) continue;
-    const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-    const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+    // Orthogonal trunk: one vertical line per net; each pin joins it horizontally, so
+    // wires of a net do not pile on top of each other.
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    const tx = Math.round((Math.min(...xs) + Math.max(...xs)) / 2);
+    const ymin = Math.min(...ys);
+    const ymax = Math.max(...ys);
     const lit = focus.has(net.id);
+    const stroke = colors.get(net.id);
+    const width = lit ? 3 : 1.6;
+    const opacity = lit ? 1 : 0.75;
     const g = el("g", { "data-net": net.id, class: "wire hoverable", cursor: "pointer" }, svg);
+    if (ymax > ymin) {
+      el("line", { x1: tx, y1: ymin, x2: tx, y2: ymax, stroke, "stroke-width": width, opacity }, g);
+    }
     for (const p of pts) {
-      el("path", {
-        d: `M ${p.x} ${p.y} L ${cx} ${p.y} L ${cx} ${cy}`,
-        fill: "none", stroke: colors.get(net.id), "stroke-width": lit ? 3 : 1.6,
-        opacity: lit ? 1 : 0.75,
-      }, g);
-      el("circle", { cx: p.x, cy: p.y, r: 3, fill: colors.get(net.id) }, g);
+      el("line", { x1: p.x, y1: p.y, x2: tx, y2: p.y, stroke, "stroke-width": width, opacity }, g);
+      el("circle", { cx: p.x, cy: p.y, r: 3, fill: stroke }, g);
       el("circle", { cx: p.x, cy: p.y, r: 8, fill: "transparent" }, g);
     }
-    el("text", { x: cx + 6, y: cy - 6, "font-size": 11, "font-weight": 600, fill: colors.get(net.id) }, g).textContent = net.label || net.id;
+    el("text", { x: tx + 5, y: ymin - 6, "font-size": 11, "font-weight": 600, fill: stroke }, g).textContent = net.label || net.id;
   }
 
   // symbols
