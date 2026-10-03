@@ -93,19 +93,23 @@ register(new PartDef({
 for (let n = 2; n <= 8; n++) {
   register(new PartDef({
     name: `header${n}`, label: `${n}-pin header`, kind: "header", pins: colPins(numbers(n)),
+    body: { x: 0, y: 0, w: 1, h: n },
   }));
 }
-// Screw terminals: classic 5.08 mm pitch = 2 holes between pins.
+// Screw terminals: classic 5.08 mm pitch = 2 holes between pins; the block is 3 wide and
+// (n-1)*2+3 tall (the two screws need room across the body).
 for (let n = 2; n <= 4; n++) {
   register(new PartDef({
     name: `terminal${n}`, label: `Screw terminal (${n}-way)`, kind: "terminal",
     pins: Array.from({ length: n }, (_, i) => ({ id: String(i + 1), x: 0, y: i * 2 })),
+    body: { x: -1, y: -1, w: 3, h: (n - 1) * 2 + 3 },
   }));
 }
 for (const half of [4, 7, 8]) {
   register(new PartDef({
     name: `dip${half * 2}`, label: `DIP-${half * 2}`, kind: "dip",
     pins: dualRow(numbers(half), numbers(half).map((n) => String(Number(n) + half)), 3),
+    body: { x: 1, y: 0, w: 2, h: half },
   }));
 }
 
@@ -115,13 +119,16 @@ for (const half of [4, 7, 8]) {
 register(new PartDef({
   name: "module-2x15", label: "Module 2x15 (dev board)", kind: "module",
   pins: dualRow(labels("L", 15), labels("R", 15), 9),
+  body: { x: -1, y: -1, w: 11, h: 17 },
 }));
 register(new PartDef({
   name: "module-2x10", label: "Module 2x10", kind: "module",
   pins: dualRow(labels("L", 10), labels("R", 10), 6),
+  body: { x: -1, y: -1, w: 8, h: 12 },
 }));
 register(new PartDef({
   name: "module-1x8", label: "Module 1x8", kind: "module", pins: colPins(labels("P", 8)),
+  body: { x: -1, y: -1, w: 3, h: 10 },
 }));
 
 export function listParts() {

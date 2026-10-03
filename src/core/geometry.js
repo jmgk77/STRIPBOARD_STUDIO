@@ -77,6 +77,23 @@ export function componentBounds(component, part) {
 }
 
 /**
+ * World rect of a part's physical body, or null (callers fall back to pin extent).
+ * `part.body` is { x, y, w, h } in local holes, inclusive: holes [x .. x+w-1] x [y .. y+h-1].
+ */
+export function componentBody(component, part) {
+  const b = part.body;
+  if (!b) return null;
+  const a = place(component, b.x, b.y);
+  const c = place(component, b.x + b.w - 1, b.y + b.h - 1);
+  return {
+    x0: Math.min(a.x, c.x),
+    y0: Math.min(a.y, c.y),
+    x1: Math.max(a.x, c.x),
+    y1: Math.max(a.y, c.y),
+  };
+}
+
+/**
  * Bounding box of everything the board actually uses: component pins, cuts and jumper
  * ends. Null when nothing is placed. This is where you can cut a virgin stripboard.
  */

@@ -1,7 +1,7 @@
 // SVG rendering of the board. Pure draw: it builds the SVG DOM from a state object and
 // sets data attributes for event delegation. No application state lives here.
 
-import { componentPins, contentBounds } from "../core/geometry.js";
+import { componentPins, componentBody, contentBounds } from "../core/geometry.js";
 import { cellId } from "../core/connectivity.js";
 import { splitPin } from "../core/model.js";
 
@@ -242,12 +242,29 @@ function drawRatsnest(svg, state, sx, sy, colors) {
 function drawComponent(svg, comp, part, state, sx, sy) {
   const { project, selected, pending } = state;
   const pts = componentPins(comp, part).map((p) => ({ id: p.id, X: sx(p.x), Y: sy(p.y), cx: p.x, cy: p.y }));
-  const xs = pts.map((p) => p.X);
-  const ys = pts.map((p) => p.Y);
-  const bx0 = Math.min(...xs) - CELL * 0.45;
-  const bx1 = Math.max(...xs) + CELL * 0.45;
-  const by0 = Math.min(...ys) - CELL * 0.45;
-  const by1 = Math.max(...ys) + CELL * 0.45;
+  const body = componentBody(comp, part);
+  let bx0;
+  let bx1;
+  let by0;
+  let by1;
+  if (body) {
+    // physical body: edges at the hole boundaries, handled in screen space (mirror-safe)
+    const c0 = sx(body.x0) - CELL / 2;
+    const c1 = sx(body.x1) + CELL / 2;
+    const r0 = sy(body.y0) - CELL / 2;
+    const r1 = sy(body.y1) + CELL / 2;
+    bx0 = Math.min(c0, c1);
+    bx1 = Math.max(c0, c1);
+    by0 = Math.min(r0, r1);
+    by1 = Math.max(r0, r1);
+  } else {
+    const xs = pts.map((p) => p.X);
+    const ys = pts.map((p) => p.Y);
+    bx0 = Math.min(...xs) - CELL * 0.45;
+    bx1 = Math.max(...xs) + CELL * 0.45;
+    by0 = Math.min(...ys) - CELL * 0.45;
+    by1 = Math.max(...ys) + CELL * 0.45;
+  }
 
   const g = el("g", { "data-ref": comp.ref, class: "component" }, svg);
   el("rect", {

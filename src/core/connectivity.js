@@ -7,7 +7,7 @@
 // Everything else in the app (UI, router, DRC) must ask this module rather than re-deriving
 // connectivity elsewhere.
 
-import { componentPins } from "./geometry.js";
+import { componentBody, componentPins } from "./geometry.js";
 import { pinKey } from "./model.js";
 
 export const cellId = (x, y) => `${x},${y}`;
@@ -74,14 +74,19 @@ export function analyze(project, library) {
       issues.push({ level: "error", code: "unknown-part", message: `component ${comp.ref} uses unknown part ${comp.part}` });
       continue;
     }
-    const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
-    for (const p of componentPins(comp, part)) {
-      box.x0 = Math.min(box.x0, p.x);
-      box.y0 = Math.min(box.y0, p.y);
-      box.x1 = Math.max(box.x1, p.x);
-      box.y1 = Math.max(box.y1, p.y);
+    const body = componentBody(comp, part);
+    if (body) {
+      compBox.set(comp.ref, body);
+    } else {
+      const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+      for (const p of componentPins(comp, part)) {
+        box.x0 = Math.min(box.x0, p.x);
+        box.y0 = Math.min(box.y0, p.y);
+        box.x1 = Math.max(box.x1, p.x);
+        box.y1 = Math.max(box.y1, p.y);
+      }
+      if (box.x0 !== Infinity) compBox.set(comp.ref, box);
     }
-    if (box.x0 !== Infinity) compBox.set(comp.ref, box);
     for (const p of componentPins(comp, part)) {
       const key = pinKey(comp.ref, p.id);
       pinPos.set(key, { x: p.x, y: p.y });
