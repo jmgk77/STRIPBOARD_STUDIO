@@ -133,7 +133,7 @@ export class App {
       for (const key of [...net.pins].sort()) {
         const ref = splitPin(key).ref;
         const chip = document.createElement("span");
-        chip.className = "chip" + (ref === this.selected ? " sel" : "");
+        chip.className = "chip" + (ref === this.selected || this.selectedNet === net.id ? " sel" : "");
         chip.title = "click to select this component";
         chip.appendChild(document.createTextNode(pinLabel(this.project, key)));
         chip.addEventListener("click", (e) => {
@@ -770,10 +770,13 @@ export class App {
       if (wireEl && this.mode === "select") {
         const i = Number(wireEl.dataset.wire);
         const jumper = this.project.jumpers[i];
-        this.selected = null;
-        this.selectedNet = jumper?.net ?? null; // clicking a jumper highlights its net
-        this.selectedWire = { kind: "jumper", i };
-        this.wireDrag = { kind: "jumper", i, before: JSON.stringify(this.project.toJSON()) };
+        const already = this.selectedWire?.kind === "jumper" && this.selectedWire.i === i;
+        if (!already) {
+          this.selected = null;
+          this.selectedNet = jumper?.net ?? null; // clicking a jumper highlights its net
+          this.selectedWire = { kind: "jumper", i };
+        }
+        this.wireDrag = { kind: "jumper", i, before: JSON.stringify(this.project.toJSON()), moved: false, wasSelected: already };
         this.svg.setPointerCapture(evt.pointerId);
         this.render();
         return;
@@ -781,10 +784,13 @@ export class App {
       const cutEl = evt.target.closest("[data-cut]");
       if (cutEl && this.mode === "select") {
         const key = cutEl.dataset.cut;
-        this.selected = null;
-        this.selectedNet = null;
-        this.selectedWire = { kind: "cut", key };
-        this.wireDrag = { kind: "cut", key, before: JSON.stringify(this.project.toJSON()) };
+        const already = this.selectedWire?.kind === "cut" && this.selectedWire.key === key;
+        if (!already) {
+          this.selected = null;
+          this.selectedNet = null;
+          this.selectedWire = { kind: "cut", key };
+        }
+        this.wireDrag = { kind: "cut", key, before: JSON.stringify(this.project.toJSON()), moved: false, wasSelected: already };
         this.svg.setPointerCapture(evt.pointerId);
         this.render();
         return;
@@ -793,12 +799,14 @@ export class App {
       if (!compEl) {
         this.selected = null;
         this.selectedWire = null;
+        this.selectedNet = null;
         this.render();
         return;
       }
       const ref = compEl.dataset.ref;
       this.selected = ref;
       this.selectedWire = null;
+      this.selectedNet = null;
       const comp = this.project.components.get(ref);
       if (comp.locked) {
         // locked = fixed: select it, but do not drag it
@@ -824,11 +832,15 @@ export class App {
         if (this.wireDrag.kind === "jumper") {
           const j = this.project.jumpers[this.wireDrag.i];
           if (j) {
+            const bx = j.x;
+            const bya = j.ya;
+            const byb = j.yb;
             if (Math.abs(y - j.ya) <= Math.abs(y - j.yb)) j.ya = y;
             else j.yb = y;
             j.x = x;
             if (j.ya > j.yb) [j.ya, j.yb] = [j.yb, j.ya];
             if (j.ya === j.yb) j.yb = Math.min(this.project.rows, j.ya + 1);
+            if (j.x !== bx || j.ya !== bya || j.yb !== byb) this.wireDrag.moved = true;
             this.render();
           }
         } else {
@@ -839,6 +851,7 @@ export class App {
             this.project.cuts.add(nk);
             this.selectedWire = { kind: "cut", key: nk };
             this.wireDrag.key = nk;
+            this.wireDrag.moved = true;
             this.render();
           }
         }
@@ -858,6 +871,15 @@ export class App {
       if (this.wireDrag) {
         const d = this.wireDrag;
         this.wireDrag = null;
+        if (!d.moved) {
+          // a plain click: toggle the selection back off if it was already selected
+          if (d.wasSelected) {
+            this.selectedWire = null;
+            this.selectedNet = null;
+            this.render();
+          }
+          return;
+        }
         if (d.kind === "jumper") {
           const j = this.project.jumpers[d.i];
           if (j) j.fixed = true;
