@@ -39,12 +39,12 @@ test("wires do not overlap: segments are pairwise disjoint", () => {
   }
 });
 
-test("a box pin connects to a terminal with a wire", () => {
-  registerPart(buildBarPart({ name: "exp", label: "exp", count: 8, doubleRow: false }));
+test("a right-column box pin connects to a terminal with a wire", () => {
+  registerPart(buildBarPart({ name: "duo", label: "duo", count: 8, doubleRow: true, gap: 3 }));
   const p = new Project();
-  p.addComponent(new Component({ ref: "U1", part: "exp" })); // 8 pins, left column
-  p.addComponent(new Component({ ref: "P1", part: "terminal2" })); // 2 pins
-  p.nets = [new Net("A", [pinKey("U1", "3"), pinKey("P1", "2")])];
+  p.addComponent(new Component({ ref: "U1", part: "duo" })); // right column pins face right
+  p.addComponent(new Component({ ref: "P1", part: "terminal2" })); // flips to face left
+  p.nets = [new Net("A", [pinKey("U1", "R1"), pinKey("P1", "2")])];
   const plan = planSchematic(p, LIBRARY);
-  assert.ok(plan.wires.length >= 1, "expected a wire between the box pin and the terminal");
+  assert.ok(plan.wires.length >= 1, "expected a wire from the right-column pin to the terminal");
 });

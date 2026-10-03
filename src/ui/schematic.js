@@ -89,17 +89,18 @@ function pack(project, library) {
     const layout = symbolLayout(part);
     return { comp, part, layout, left: layout.left.slice(), right: layout.right.slice(), all: [] };
   });
-  const maxW = 980;
+  const MARGIN = 110;
+  const maxW = 1000;
   const gapX = 50;
   const gapY = 52;
-  let x = 40;
-  let y = 40;
+  let x = MARGIN;
+  let y = MARGIN;
   let rowH = 0;
   for (const it of items) {
     const w = it.layout.box.w;
     const h = it.layout.box.h;
-    if (x + w > maxW && x > 40) {
-      x = 40;
+    if (x + w > maxW && x > MARGIN) {
+      x = MARGIN;
       y += rowH + gapY;
       rowH = 0;
     }
@@ -133,7 +134,7 @@ function pack(project, library) {
     it.all = [...it.left, ...it.right];
   }
   for (const it of items) if (it.all.length === 0) it.all = [...it.left, ...it.right];
-  return { items, width: maxW + 40, height: y + rowH + 64 };
+  return { items, width: maxW + MARGIN + 40, height: y + rowH + MARGIN + 24 };
 }
 
 function bodyRect(it) {
@@ -145,24 +146,32 @@ function bodyRect(it) {
   };
 }
 
-function channelCandidates(ax, sA, bx, sB) {
-  let lower = -Infinity;
-  let upper = Infinity;
+function channelCandidates(ax, sA, bx, sB, minX, maxX) {
+  let lower = minX;
+  let upper = maxX;
   if (sA > 0) lower = Math.max(lower, ax + 12);
   else upper = Math.min(upper, ax - 12);
   if (sB > 0) lower = Math.max(lower, bx + 12);
   else upper = Math.min(upper, bx - 12);
   if (lower > upper) return [];
   const out = [];
-  if (Number.isFinite(lower) && Number.isFinite(upper)) {
+  const finiteLo = lower > minX;
+  const finiteHi = upper < maxX;
+  const push = (x) => {
+    const v = Math.round(x);
+    if (v >= minX && v <= maxX && !out.includes(v)) out.push(v);
+  };
+  if (finiteLo && finiteHi) {
     const span = upper - lower;
-    out.push(Math.round(lower + span / 2), Math.round(lower + span * 0.25), Math.round(lower + span * 0.75));
-  } else if (Number.isFinite(lower)) {
-    out.push(Math.round(lower + 10), Math.round(lower + 34), Math.round(lower + 70), Math.round(lower + 120));
-  } else if (Number.isFinite(upper)) {
-    out.push(Math.round(upper - 10), Math.round(upper - 34), Math.round(upper - 70), Math.round(upper - 120));
+    push(lower + span / 2);
+    push(lower + span * 0.25);
+    push(lower + span * 0.75);
+  } else if (finiteLo) {
+    for (const d of [10, 34, 70, 120, 180]) push(lower + d);
+  } else if (finiteHi) {
+    for (const d of [10, 34, 70, 120, 180]) push(upper - d);
   } else {
-    out.push(Math.round((ax + bx) / 2));
+    push((ax + bx) / 2);
   }
   return out;
 }
@@ -170,7 +179,16 @@ function channelCandidates(ax, sA, bx, sB) {
 /** Pure layout + wiring plan. Returns items placed and the wires to draw. */
 export function planSchematic(project, library) {
   const { items, width, height } = pack(project, library);
-  const boxes = items.map((it) => ({ ref: it.comp.ref, r: bodyRect(it) }));
+  // Obstacles: component bodies, their ref/value text above, and the labels that a
+  // non-wire (complex or 1-pin) net will draw at its pins.
+  const obstacles = [];
+  for (const it of items) {
+    const r = bodyRect(it);
+    obstacles.push({ x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 });
+    const text = `${it.comp.ref}${it.comp.value ? ` ${it.comp.value}` : ""}`;
+    const w = text.length * 6.2;
+    obstacles.push({ x0: it.cx - w / 2, y0: r.y0 - 18, x1: it.cx + w / 2, y1: r.y0 - 2 });
+  }
   const netPins = new Map();
   for (const it of items) {
     for (const p of it.all) {
@@ -181,28 +199,34 @@ export function planSchematic(project, library) {
       netPins.set(net.id, list);
     }
   }
+  const netNumber = new Map(project.nets.map((n, i) => [n.id, String(i + 1)]));
+  for (const net of project.nets) {
+    const pts = netPins.get(net.id) ?? [];
+    if (pts.length === 2) continue; // may still become a wire
+    const label = net.label || netNumber.get(net.id) || "";
+    for (const p of pts) {
+      const w = Math.max(12, label.length * 6.2) + 26;
+      const x0 = p.side < 0 ? p.x - w : p.x + 6;
+      obstacles.push({ x0, y0: p.y - 9, x1: x0 + w, y1: p.y + 7 });
+    }
+  }
 
+  const minX = 10;
+  const maxX = width - 10;
   const usedH = [];
   const usedV = [];
-  const clearH = (y, x0, x1, selfRefs) => {
+  const hitsObstacle = (rect) => obstacles.some((r) => rect.x1 > r.x0 - 3 && rect.x0 < r.x1 + 3 && rect.y1 > r.y0 - 3 && rect.y0 < r.y1 + 3);
+  const clearH = (netId, y, x0, x1) => {
     const lo = Math.min(x0, x1);
     const hi = Math.max(x0, x1);
-    for (const { ref, r } of boxes) {
-      if (selfRefs.includes(ref)) continue;
-      if (y >= r.y0 - 2 && y <= r.y1 + 2 && hi > r.x0 - 4 && lo < r.x1 + 4) return false;
-    }
-    for (const s of usedH) if (Math.abs(s.y - y) < 1 && hi > s.x0 - 3 && lo < s.x1 + 3) return false;
-    return true;
+    if (hitsObstacle({ x0: lo, y0: y - 2, x1: hi, y1: y + 2 })) return false;
+    return !usedH.some((s) => s.net !== netId && Math.abs(s.y - y) < 8 && hi > s.x0 - 4 && lo < s.x1 + 4);
   };
-  const clearV = (x, y0, y1, selfRefs) => {
+  const clearV = (netId, x, y0, y1) => {
     const lo = Math.min(y0, y1);
     const hi = Math.max(y0, y1);
-    for (const { ref, r } of boxes) {
-      if (selfRefs.includes(ref)) continue;
-      if (x >= r.x0 - 2 && x <= r.x1 + 2 && hi > r.y0 - 3 && lo < r.y1 + 3) return false;
-    }
-    for (const s of usedV) if (Math.abs(s.x - x) < 1 && hi > s.y0 - 3 && lo < s.y1 + 3) return false;
-    return true;
+    if (hitsObstacle({ x0: x - 2, y0: lo, x1: x + 2, y1: hi })) return false;
+    return !usedV.some((s) => s.net !== netId && Math.abs(s.x - x) < 10 && hi > s.y0 - 4 && lo < s.y1 + 4);
   };
 
   const wires = [];
@@ -210,14 +234,13 @@ export function planSchematic(project, library) {
     const pts = netPins.get(net.id);
     if (!pts || pts.length !== 2) continue;
     const [a, b] = pts;
-    const selfRefs = [a.ref, b.ref];
-    for (const cx of channelCandidates(a.x, a.side, b.x, b.side)) {
-      if (!clearH(a.y, a.x, cx, selfRefs)) continue;
-      if (!clearV(cx, a.y, b.y, selfRefs)) continue;
-      if (!clearH(b.y, cx, b.x, selfRefs)) continue;
-      usedH.push({ y: a.y, x0: Math.min(a.x, cx), x1: Math.max(a.x, cx) });
-      usedV.push({ x: cx, y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) });
-      usedH.push({ y: b.y, x0: Math.min(cx, b.x), x1: Math.max(cx, b.x) });
+    for (const cx of channelCandidates(a.x, a.side, b.x, b.side, minX, maxX)) {
+      if (!clearH(net.id, a.y, a.x, cx)) continue;
+      if (!clearV(net.id, cx, a.y, b.y)) continue;
+      if (!clearH(net.id, b.y, cx, b.x)) continue;
+      usedH.push({ net: net.id, y: a.y, x0: Math.min(a.x, cx), x1: Math.max(a.x, cx) });
+      usedV.push({ net: net.id, x: cx, y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) });
+      usedH.push({ net: net.id, y: b.y, x0: Math.min(cx, b.x), x1: Math.max(cx, b.x) });
       wires.push({ netId: net.id, points: [{ x: a.x, y: a.y }, { x: cx, y: a.y }, { x: cx, y: b.y }, { x: b.x, y: b.y }] });
       break;
     }
