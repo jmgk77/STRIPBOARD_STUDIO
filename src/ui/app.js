@@ -926,11 +926,13 @@ export class App {
 
   useThis() {
     if (this.active === "edit") return;
-    this.project = this.versions[this.active].clone();
+    const next = this.versions[this.active].clone();
+    // Applying a whole computed result is ONE undoable step: snapshot the edit board
+    // before swapping it in, and keep the history so Ctrl+Z returns to it.
+    this.snapshot();
+    this.project = next;
     this.versions = { solve: null, optimize: null, compact: null, trim: null };
     this.active = "edit";
-    this.history.length = 0;
-    this.redoStack.length = 0;
     this.selected = null;
     this.selectedWire = null;
     this.selectedNet = null;
@@ -938,7 +940,7 @@ export class App {
     this._syncSizeInputs();
     this._recomputeIssues();
     this.render();
-    this._status("result copied to the edit board");
+    this._status("result copied to the edit board (Ctrl+Z undoes it)");
   }
 
   _updateTabUI() {
@@ -1162,23 +1164,42 @@ export class App {
     this.render();
   }
 
-  save() {
-    if (!this.fileName) {
-      const name = window.prompt("Save board as", this.project.title || "board");
-      if (name == null) return;
-      this.fileName = (name.trim() || "board").replace(/\.json$/i, "");
-      this.project.title = this.fileName;
-    }
+  _downloadProject(name) {
     const blob = new Blob([JSON.stringify(this.project.toJSON(), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${this.fileName}.json`;
+    a.download = `${name}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  _afterSave(name) {
+    this.fileName = name;
+    this.project.title = name;
     this.dirty = false;
     this._persistAutosave(); // record the cleared dirty flag right away
-    this._status(`saved ${this.fileName}.json`);
+    this._status(`saved ${name}.json`);
+  }
+
+  save() {
+    let name = this.fileName;
+    if (!name) {
+      const ans = window.prompt("Save board as", this.project.title || "board");
+      if (ans == null) return;
+      name = (ans.trim() || "board").replace(/\.json$/i, "");
+    }
+    this._downloadProject(name);
+    this._afterSave(name);
+  }
+
+  /** Always ask for a name, even when the board already has one. */
+  saveAs() {
+    const ans = window.prompt("Save board as", this.fileName || this.project.title || "board");
+    if (ans == null) return;
+    const name = (ans.trim() || "board").replace(/\.json$/i, "");
+    this._downloadProject(name);
+    this._afterSave(name);
   }
 
   async open(file) {
@@ -1219,6 +1240,7 @@ export class App {
     const on = (id, fn) => document.getElementById(id).addEventListener("click", fn);
     on("new", () => this.newProject());
     on("save", () => this.save());
+    on("saveAs", () => this.saveAs());
     on("open", () => {
       if (!this._confirmDiscard()) return;
       document.getElementById("file").click();
@@ -1580,6 +1602,7 @@ export class App {
           if (lower === "c") return evt.preventDefault(), this.compact();
           if (lower === "t") return evt.preventDefault(), this.trim();
           if (lower === "z") return evt.preventDefault(), this.redo();
+          if (lower === "s") return evt.preventDefault(), this.saveAs();
         }
         if (lower === "z") return evt.preventDefault(), this.undo();
         if (lower === "y") return evt.preventDefault(), this.redo();
