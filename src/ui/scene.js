@@ -402,8 +402,9 @@ function drawGlyph(g, part, pts) {
   }
   if (kind === "terminal") {
     for (const p of pts) {
-      el("circle", { cx: p.X, cy: p.Y, r: 7, fill: "#d9d7cb", stroke: "#202020", "stroke-width": 1.4 }, g);
-      el("line", { x1: p.X - 4.5, y1: p.Y - 4.5, x2: p.X + 4.5, y2: p.Y + 4.5, stroke: "#202020", "stroke-width": 1.6 }, g);
+      el("circle", { cx: p.X, cy: p.Y, r: 10, fill: "#d9d7cb", stroke: "#202020", "stroke-width": 1.5 }, g);
+      el("circle", { cx: p.X, cy: p.Y, r: 6, fill: "none", stroke: "#8a8a80", "stroke-width": 1 }, g);
+      el("line", { x1: p.X - 6, y1: p.Y - 6, x2: p.X + 6, y2: p.Y + 6, stroke: "#202020", "stroke-width": 2.2 }, g);
     }
     return;
   }
