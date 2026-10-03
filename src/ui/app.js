@@ -29,6 +29,8 @@ export class App {
     this.selectedWire = null;
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
     this.schematic = false;
+    this.active = "edit";
+    this.versions = { solve: null, optimize: null, compact: null, trim: null };
     this._editingPart = null;
     this._editBefore = null;
     this.fileName = null;
@@ -48,15 +50,15 @@ export class App {
   }
 
   /** The set of nets currently in focus, derived from the one primary selection. */
-  _focusedNets() {
+  _focusedNets(project = this._shownProject()) {
     const set = new Set();
     if (this.selectedNet) set.add(this.selectedNet);
     else if (this.selectedWire?.kind === "jumper") {
-      const j = this.project.jumpers[this.selectedWire.i];
+      const j = project.jumpers[this.selectedWire.i];
       if (j?.net) set.add(j.net);
     } else if (this.selected) {
       const ref = this.selected;
-      for (const net of this.project.nets) {
+      for (const net of project.nets) {
         if ([...net.pins].some((k) => splitPin(k).ref === ref)) set.add(net.id);
       }
     }
@@ -77,19 +79,25 @@ export class App {
 
   // -- rendering ----------------------------------------------------------------
 
+  _shownProject() {
+    return this.active === "edit" ? this.project : this.versions[this.active] ?? this.project;
+  }
+
   render() {
+    const project = this._shownProject();
+    this.issues = analyze(project, LIBRARY).issues;
     const state = {
-      project: this.project,
+      project,
       library: LIBRARY,
       view: this.view,
       selected: this.selected,
       pending: this.pending,
       mode: this.mode,
-      solved: this.solved,
+      solved: project.jumpers.length > 0 || project.cuts.size > 0,
       showNames: this.showNames,
       selectedNet: this.selectedNet,
       selectedWire: this.selectedWire,
-      focusNets: this._focusedNets(),
+      focusNets: this._focusedNets(project),
       layers: this.layers,
       issues: this.issues,
     };
@@ -99,6 +107,7 @@ export class App {
     this._renderNets();
     this._renderProblems();
     this._renderSelection();
+    this._updateTabUI();
   }
 
   _renderPalette() {
@@ -140,15 +149,17 @@ export class App {
 
   _renderNets() {
     const box = document.getElementById("nets");
+    const project = this._shownProject();
     box.innerHTML = "";
-    if (this.project.nets.length === 0) {
+    if (project.nets.length === 0) {
       box.innerHTML = '<div class="muted">no nets yet — use Connect</div>';
       return;
     }
-    const ordered = [...this.project.nets].sort((a, b) =>
+    const ordered = [...project.nets].sort((a, b) =>
       (a.label || a.id).localeCompare(b.label || b.id, undefined, { numeric: true }),
     );
-    const focus = this._focusedNets();
+    const focus = this._focusedNets(project);
+    const ed = this._canEdit();
     for (const net of ordered) {
       const row = document.createElement("div");
       row.className = "item" + (focus.has(net.id) ? " active" : "");
@@ -160,6 +171,7 @@ export class App {
       input.className = "netname";
       input.placeholder = net.id;
       input.value = net.label || "";
+      input.disabled = !ed;
       input.addEventListener("focus", () => {
         this._editBefore = JSON.stringify(this.project.toJSON());
       });
@@ -176,6 +188,7 @@ export class App {
       del.className = "minibtn";
       del.textContent = "✕";
       del.title = "delete this net";
+      del.disabled = !ed;
       del.addEventListener("click", () => {
         this.snapshot();
         this.project.nets = this.project.nets.filter((n) => n !== net);
@@ -194,7 +207,7 @@ export class App {
         const chip = document.createElement("span");
         chip.className = "chip" + (ref === this.selected || focus.has(net.id) ? " sel" : "");
         chip.title = "click to select this component";
-        chip.appendChild(document.createTextNode(pinLabel(this.project, key)));
+        chip.appendChild(document.createTextNode(pinLabel(project, key)));
         chip.addEventListener("click", (e) => {
           e.stopPropagation();
           if (this.selected === ref) {
@@ -210,6 +223,7 @@ export class App {
         x.className = "chipx";
         x.textContent = "✕";
         x.title = "remove this pin from the net";
+        x.disabled = !ed;
         x.addEventListener("click", (e) => {
           e.stopPropagation();
           this.snapshot();
@@ -272,38 +286,40 @@ export class App {
 
   _renderSelection() {
     const box = document.getElementById("selection");
+    const project = this._shownProject();
+    const ed = this._canEdit();
     box.innerHTML = "";
-    const comp = this.selected ? this.project.components.get(this.selected) : null;
+    const comp = this.selected ? project.components.get(this.selected) : null;
     if (!comp) {
       if (this.pending) {
         box.textContent = `connect: ${this.pending} — click another pin`;
         return;
       }
       if (this.selectedWire?.kind === "jumper") {
-        const j = this.project.jumpers[this.selectedWire.i];
+        const j = project.jumpers[this.selectedWire.i];
         if (j) {
-          const net = this.project.nets.find((n) => n.id === j.net);
-          const a = `${j.x}${rowLabel(j.ya, this.project.rows)}`;
-          const b = `${j.x}${rowLabel(j.yb, this.project.rows)}`;
+          const net = project.nets.find((n) => n.id === j.net);
+          const a = `${j.x}${rowLabel(j.ya, project.rows)}`;
+          const b = `${j.x}${rowLabel(j.yb, project.rows)}`;
           this._wireBox(box, `Jumper · ${a}-${b}`, [
             `net: ${net ? net.label || net.id : "(none)"}`,
             `length: ${Math.abs(j.yb - j.ya)} holes`,
             `state: ${j.fixed ? "fixed" : "auto"}`,
-          ], !!j.fixed);
+          ], !!j.fixed, ed);
           return;
         }
       }
       if (this.selectedWire?.kind === "cut") {
         const [x, y] = this.selectedWire.key.split(",").map(Number);
-        const fixed = this.project.fixedCuts?.has(this.selectedWire.key);
-        this._wireBox(box, `Cut · ${rowLabel(y, this.project.rows)}${x}`, [
+        const fixed = project.fixedCuts?.has(this.selectedWire.key);
+        this._wireBox(box, `Cut · ${rowLabel(y, project.rows)}${x}`, [
           "breaks the strip on this row",
           `state: ${fixed ? "fixed" : "auto"}`,
-        ], !!fixed);
+        ], !!fixed, ed);
         return;
       }
       if (this.selectedNet) {
-        const net = this.project.nets.find((n) => n.id === this.selectedNet);
+        const net = project.nets.find((n) => n.id === this.selectedNet);
         box.textContent = `net ${net?.label || this.selectedNet} selected`;
         return;
       }
@@ -320,6 +336,7 @@ export class App {
     refInput.type = "text";
     refInput.value = comp.ref;
     refInput.placeholder = "name";
+    refInput.disabled = !ed;
     refInput.addEventListener("focus", () => {
       this._editBefore = JSON.stringify(this.project.toJSON());
     });
@@ -345,6 +362,7 @@ export class App {
       input.min = String(part.bendable.min);
       input.max = String(part.bendable.max);
       input.value = String(comp.span || part.bendable.default);
+      input.disabled = !ed;
       input.addEventListener("change", () => {
         this.snapshot();
         const v = Number(input.value) || part.bendable.default;
@@ -373,6 +391,7 @@ export class App {
       input.type = "text";
       input.placeholder = pin.id;
       input.value = comp.pinNames?.[pin.id] ?? "";
+      input.disabled = !ed;
       input.addEventListener("focus", () => {
         this._editBefore = JSON.stringify(this.project.toJSON());
       });
@@ -390,7 +409,7 @@ export class App {
       row.appendChild(tag);
       row.appendChild(input);
 
-      const net = this.project.netOf(pinKey(comp.ref, pin.id));
+      const net = project.netOf(pinKey(comp.ref, pin.id));
       if (net) {
         const badge = document.createElement("span");
         badge.className = "netbadge";
@@ -399,6 +418,7 @@ export class App {
         off.className = "minibtn";
         off.textContent = "✕";
         off.title = "disconnect this pin";
+        off.disabled = !ed;
         off.addEventListener("click", () => {
           this.snapshot();
           net.pins.delete(pinKey(comp.ref, pin.id));
@@ -439,6 +459,7 @@ export class App {
   }
 
   _afterStructuralChange(invalidate = true) {
+    this.versions = { solve: null, optimize: null, compact: null, trim: null };
     if (invalidate) this.invalidateRouting();
     else this.solved = this.project.jumpers.length > 0 || this.project.cuts.size > 0;
     this.selected = this.project.components.has(this.selected) ? this.selected : null;
@@ -473,6 +494,7 @@ export class App {
   }
 
   addPart(name) {
+    if (!this._guard()) return;
     const part = LIBRARY.get(name);
     const prefix = REF_PREFIX[part.kind] ?? "J";
     const ref = this.project.uniqueRef(prefix);
@@ -484,6 +506,7 @@ export class App {
   }
 
   _renameSelected(input) {
+    if (!this._guard()) return;
     const comp = this.selected && this.project.components.get(this.selected);
     if (!comp) return;
     const next = input.value.trim();
@@ -505,7 +528,7 @@ export class App {
     this._status(`renamed ${old} to ${next}`);
   }
 
-  _wireBox(box, title, lines, fixed) {
+  _wireBox(box, title, lines, fixed, ed = true) {
     box.innerHTML = "";
     const head = document.createElement("div");
     head.textContent = title;
@@ -522,10 +545,12 @@ export class App {
     fix.className = "minibtn";
     fix.textContent = fixed ? "Unfix" : "Fix";
     fix.title = fixed ? "release so Solve may change it" : "pin it so Solve keeps it";
+    fix.disabled = !ed;
     fix.addEventListener("click", () => this.toggleFixSelected());
     const del = document.createElement("button");
     del.className = "minibtn";
     del.textContent = "Delete";
+    del.disabled = !ed;
     del.addEventListener("click", () => this.deleteSelected());
     row.appendChild(fix);
     row.appendChild(del);
@@ -561,6 +586,7 @@ export class App {
   }
 
   deletePart(name) {
+    if (!this._guard()) return;
     if ([...this.project.components.values()].some((c) => c.part === name)) {
       this._status(`cannot delete ${name}: a component still uses it`);
       return;
@@ -581,6 +607,7 @@ export class App {
   }
 
   createPart() {
+    if (!this._guard()) return;
     const label = document.getElementById("pLabel").value.trim() || "Bar";
     const doubleRow = document.getElementById("pDouble").value === "yes";
     const count = Math.max(1, Number(document.getElementById("pCount").value) || 1);
@@ -613,6 +640,7 @@ export class App {
   }
 
   rotateSelected(dir = 1) {
+    if (!this._guard()) return;
     const comp = this.selected && this.project.components.get(this.selected);
     if (!comp) return;
     const part = LIBRARY.get(comp.part);
@@ -623,6 +651,7 @@ export class App {
   }
 
   lockSelected() {
+    if (!this._guard()) return;
     if (this.selectedWire) {
       this.toggleFixSelected(); // L fixes/unfixes a jumper or a cut too
       return;
@@ -635,6 +664,7 @@ export class App {
   }
 
   deleteSelected() {
+    if (!this._guard()) return;
     if (this.selectedWire) {
       const w = this.selectedWire;
       this.snapshot();
@@ -663,6 +693,7 @@ export class App {
   }
 
   toggleFixSelected() {
+    if (!this._guard()) return;
     const w = this.selectedWire;
     if (!w) return;
     this.snapshot();
@@ -684,6 +715,7 @@ export class App {
   }
 
   setMode(mode) {
+    if (!this._guard()) return;
     this.mode = mode;
     if (mode !== "connect") this.pending = null;
     document.getElementById("connect").classList.toggle("active", mode === "connect");
@@ -722,73 +754,108 @@ export class App {
 
   // -- solve --------------------------------------------------------------------
 
+  // -- versions (result tabs) -----------------------------------------------------
+
+  _canEdit() {
+    return this.active === "edit";
+  }
+
+  _guard() {
+    if (this._canEdit()) return true;
+    this._status("read-only result tab — click 'Use this' to edit");
+    return false;
+  }
+
   solve() {
-    this._runBusy("Solving…", () => {
-      this.project.fixedCuts = this.project.fixedCuts ?? new Set();
-      const result = route(this.project, LIBRARY);
-      this.snapshot();
-      this.project.cuts = alignCuts(this.project, LIBRARY, result.cuts, result.jumpers);
-      this.project.jumpers = result.jumpers.map((j) => ({
-        x: j.x, ya: j.ya, yb: j.yb, net: j.net, fixed: !!j.fixed,
-      }));
-      this.selectedWire = null;
-      this.solved = true;
-      const analysis = analyze(this.project, LIBRARY);
-      this.issues = [...result.diagnostics, ...analysis.issues];
-      this.render();
-      const errors = this.issues.filter((i) => i.level === "error").length;
-      this._status(
-        errors
-          ? `solved with ${errors} problem(s)`
-          : `solved: ${result.jumpers.length} jumper(s), ${result.cuts.size} cut(s)`,
-      );
-    });
+    this.switchTab("solve");
   }
 
   optimize() {
-    this._optimize(null, "Optimizing…", "optimized");
+    this.switchTab("optimize");
   }
 
   compact() {
-    // Spread/wire/span weigh heavily, so parts are pulled together and leads shortened.
-    this._optimize(COMPACT_WEIGHTS, "Compacting…", "compacted", { maxPasses: 6, maxEvaluations: 300 });
-  }
-
-  _optimize(weights, busyMsg, verb, opts = {}) {
-    this._runBusy(busyMsg, () => {
-      this.snapshot();
-      const info = weights
-        ? optimizeLayout(this.project, LIBRARY, { weights, ...opts })
-        : optimizeLayout(this.project, LIBRARY, opts);
-      const result = route(this.project, LIBRARY);
-      this.project.cuts = result.cuts;
-      this.project.jumpers = result.jumpers;
-      this.solved = true;
-      this._recomputeIssues();
-      this.render();
-      this._status(
-        `${verb} ${info.components} free part(s): cost ${info.startScore} -> ${info.score} (spread ${info.spread})`,
-      );
-    });
+    this.switchTab("compact");
   }
 
   trim() {
-    const b = contentBounds(this.project, LIBRARY);
-    if (!b) return;
-    this.snapshot();
-    const dx = 1 - b.x0; // fit the content exactly, no extra leading row/column
-    const dy = 1 - b.y0;
-    for (const c of this.project.components.values()) {
-      c.x += dx;
-      c.y += dy;
+    this.switchTab("trim");
+  }
+
+  switchTab(name) {
+    if (name !== "edit" && !this.versions[name]) {
+      this._runBusy(`Computing ${name}…`, () => {
+        this.versions[name] = this._computeVersion(name);
+        this.active = name;
+        this.selected = null;
+        this.selectedWire = null;
+        this.selectedNet = null;
+        this.render();
+        this._status(`${name} ready — 'Use this' to make it the edit board`);
+      });
+      return;
     }
-    this.project.cols = b.x1 - b.x0 + 1;
-    this.project.rows = b.y1 - b.y0 + 1;
-    this.invalidateRouting();
-    document.getElementById("cols").value = this.project.cols;
-    document.getElementById("rows").value = this.project.rows;
-    this._afterStructuralChange(true);
-    this._status(`board trimmed to ${this.project.cols} x ${this.project.rows}`);
+    this.active = name;
+    this.selected = null;
+    this.selectedWire = null;
+    this.selectedNet = null;
+    this.render();
+    if (name !== "edit") this._status(`${name} (cached) — 'Use this' to make it the edit board`);
+  }
+
+  _computeVersion(name) {
+    const clone = this.project.clone();
+    if (name === "trim") {
+      const b = contentBounds(clone, LIBRARY);
+      if (b) {
+        const dx = 1 - b.x0;
+        const dy = 1 - b.y0;
+        for (const c of clone.components.values()) {
+          c.x += dx;
+          c.y += dy;
+        }
+        clone.cols = b.x1 - b.x0 + 1;
+        clone.rows = b.y1 - b.y0 + 1;
+        clone.cuts = new Set();
+        clone.jumpers = [];
+      }
+      return clone;
+    }
+    if (name === "optimize" || name === "compact") {
+      if (name === "compact") optimizeLayout(clone, LIBRARY, { weights: COMPACT_WEIGHTS, maxPasses: 6, maxEvaluations: 300 });
+      else optimizeLayout(clone, LIBRARY);
+    }
+    // solve / optimize / compact all finish by routing the (possibly optimized) board
+    const result = route(clone, LIBRARY);
+    clone.cuts = alignCuts(clone, LIBRARY, result.cuts, result.jumpers);
+    clone.jumpers = result.jumpers.map((j) => ({ x: j.x, ya: j.ya, yb: j.yb, net: j.net, fixed: !!j.fixed }));
+    return clone;
+  }
+
+  useThis() {
+    if (this.active === "edit") return;
+    this.project = this.versions[this.active].clone();
+    this.versions = { solve: null, optimize: null, compact: null, trim: null };
+    this.active = "edit";
+    this.history.length = 0;
+    this.redoStack.length = 0;
+    this.selected = null;
+    this.selectedWire = null;
+    this.selectedNet = null;
+    this._syncSizeInputs();
+    this._recomputeIssues();
+    this.render();
+    this._status("result copied to the edit board");
+  }
+
+  _updateTabUI() {
+    for (const b of document.querySelectorAll(".vtab")) {
+      b.classList.toggle("active", b.dataset.vtab === this.active);
+    }
+    const use = document.getElementById("useThis");
+    if (use) use.style.display = this.active === "edit" ? "none" : "";
+    const note = document.getElementById("tabNote");
+    if (note) note.textContent = this.active === "edit" ? "" : "read-only";
   }
 
   showAscii() {
@@ -855,6 +922,10 @@ export class App {
   }
 
   setBoardSize(cols, rows) {
+    if (!this._guard()) {
+      this._syncSizeInputs();
+      return;
+    }
     const min = this._minBoard();
     this.snapshot();
     this.project.cols = Math.max(min.cols, Math.min(100, Math.round(cols) || 1));
@@ -967,6 +1038,11 @@ export class App {
     document.getElementById("cols").addEventListener("change", () => this.setBoardSize(Number(document.getElementById("cols").value), this.project.rows));
     document.getElementById("rows").addEventListener("change", () => this.setBoardSize(this.project.cols, Number(document.getElementById("rows").value)));
 
+    for (const b of document.querySelectorAll(".vtab")) {
+      b.addEventListener("click", () => this.switchTab(b.dataset.vtab));
+    }
+    document.getElementById("useThis").addEventListener("click", () => this.useThis());
+
     const tabs = [...document.querySelectorAll(".tabbar .tab")];
     for (const tab of tabs) {
       tab.addEventListener("click", () => {
@@ -996,6 +1072,7 @@ export class App {
       const active = document.activeElement;
       if (active && ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName)) active.blur();
       evt.preventDefault(); // stop text selection while dragging on the board
+      const editing = this._canEdit();
 
       const netEl = evt.target.closest("[data-net]");
       if (netEl) {
@@ -1007,14 +1084,14 @@ export class App {
         return;
       }
       const handleEl = evt.target.closest("[data-handle]");
-      if (handleEl) {
+      if (handleEl && editing) {
         this.boardResize = { axis: handleEl.dataset.handle, before: JSON.stringify(this.project.toJSON()), moved: false };
         this.svg.setPointerCapture(evt.pointerId);
         return;
       }
       // Shift+drag (or Alt+drag) a bendable part's lead to change its span. Shift is used
       // first because Alt+drag is grabbed by the window manager on Linux.
-      if ((evt.shiftKey || evt.altKey) && this.mode === "select") {
+      if ((evt.shiftKey || evt.altKey) && this.mode === "select" && editing) {
         const el = evt.target.closest("[data-ref]");
         const comp = el && this.project.components.get(el.dataset.ref);
         const part = comp && LIBRARY.get(comp.part);
@@ -1030,7 +1107,7 @@ export class App {
       }
 
       const pinEl = evt.target.closest("[data-pin]");
-      if (pinEl && this.mode === "connect") {
+      if (pinEl && this.mode === "connect" && editing) {
         this.handlePinClick(`${pinEl.dataset.ref}.${pinEl.dataset.pin}`);
         return;
       }
@@ -1044,8 +1121,10 @@ export class App {
           this.selectedNet = null; // the jumper's net is derived from the selection
           this.selectedWire = { kind: "jumper", i };
         }
-        this.wireDrag = { kind: "jumper", i, before: JSON.stringify(this.project.toJSON()), moved: false, wasSelected: already };
-        this.svg.setPointerCapture(evt.pointerId);
+        if (editing) {
+          this.wireDrag = { kind: "jumper", i, before: JSON.stringify(this.project.toJSON()), moved: false, wasSelected: already };
+          this.svg.setPointerCapture(evt.pointerId);
+        }
         this.render();
         return;
       }
@@ -1058,8 +1137,10 @@ export class App {
           this.selectedNet = null;
           this.selectedWire = { kind: "cut", key };
         }
-        this.wireDrag = { kind: "cut", key, before: JSON.stringify(this.project.toJSON()), moved: false, wasSelected: already };
-        this.svg.setPointerCapture(evt.pointerId);
+        if (editing) {
+          this.wireDrag = { kind: "cut", key, before: JSON.stringify(this.project.toJSON()), moved: false, wasSelected: already };
+          this.svg.setPointerCapture(evt.pointerId);
+        }
         this.render();
         return;
       }
@@ -1085,8 +1166,8 @@ export class App {
         this.render();
         return;
       }
-      if (comp.locked) {
-        // locked = fixed: no drag; a second click toggles the selection off
+      if (comp.locked || !editing) {
+        // locked, or a read-only result tab: no drag; a second click toggles selection off
         if (already) this.selected = null;
         this.render();
         return;
@@ -1256,6 +1337,7 @@ export class App {
       const key = evt.key;
       const lower = key.length === 1 ? key.toLowerCase() : key;
       const mod = evt.ctrlKey || evt.metaKey;
+      if (!this._canEdit() && key !== "Escape" && lower !== "v") return; // read-only tab
       if (mod) {
         if (evt.shiftKey) {
           if (lower === "o") return evt.preventDefault(), this.optimize();

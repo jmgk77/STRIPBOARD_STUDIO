@@ -50,7 +50,19 @@
       <label class="check"><input type="checkbox" id="names" checked> pin names</label>
       <label class="check"><input type="checkbox" id="schematic"> schematic view</label>
     </aside>
-    <div id="canvasWrap"><svg id="board" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    <div id="center">
+      <div class="vtabbar">
+        <button class="vtab active" data-vtab="edit">Edit</button>
+        <button class="vtab" data-vtab="solve">Solve</button>
+        <button class="vtab" data-vtab="optimize">Optimize</button>
+        <button class="vtab" data-vtab="compact">Compact</button>
+        <button class="vtab" data-vtab="trim">Trim</button>
+        <span class="grow"></span>
+        <span id="tabNote" class="muted"></span>
+        <button id="useThis" class="primary" style="display:none">Use this</button>
+      </div>
+      <div id="canvasWrap"><svg id="board" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    </div>
     <aside id="panel">
       <div class="tabbar">
         <button class="tab active" data-tab="props">Properties</button>

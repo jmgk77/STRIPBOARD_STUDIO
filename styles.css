@@ -80,6 +80,10 @@ aside h3 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; lette
 .tab.active { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
 .tabpane.hidden { display: none; }
 
+#center { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.vtabbar { display: flex; align-items: center; gap: 4px; padding: 6px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.vtab { padding: 4px 10px; }
+.vtab.active { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
 #canvasWrap { flex: 1; overflow: auto; background: #14171b; }
 
 #board { display: block; }
