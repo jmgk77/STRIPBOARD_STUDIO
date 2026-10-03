@@ -35,6 +35,19 @@ test("a flush body's holes are a jumper keep-out", () => {
   }
 });
 
+test("a fixed cut keeps the router from deriving another on that row", () => {
+  const p = new Project({ cols: 12, rows: 6 });
+  p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // (2,2)
+  p.addComponent(new Component({ ref: "J2", part: "header2", x: 10, y: 2 })); // (10,2)
+  p.nets = [new Net("A", [pinKey("J1", "1")]), new Net("B", [pinKey("J2", "1")])];
+  p.fixedCuts = new Set(["5,2"]);
+  const r = route(p, LIBRARY);
+  const rowCuts = [...r.cuts].filter((c) => c.endsWith(",2"));
+  assert.deepEqual(rowCuts, ["5,2"], "only the user's cut remains on that row");
+  p.cuts = new Set(r.cuts);
+  assert.equal(analyze(p, LIBRARY).ok, true);
+});
+
 test("no hole is ever shared by two jumpers", () => {
   const p = new Project({ cols: 12, rows: 10 });
   p.addComponent(new Component({ ref: "J", part: "header3", x: 5, y: 2 })); // pins (5,2),(5,3),(5,4)

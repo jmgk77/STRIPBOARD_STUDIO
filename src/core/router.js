@@ -81,6 +81,12 @@ export function route(project, library, { maxAttempts = Infinity } = {}) {
     if (best.errors === 0) break; // a valid result; good enough
   }
   if (best === null) return { cuts: new Set(), jumpers: [], diagnostics: [] };
+  // A row that has a user-fixed cut is the user's call: don't also derive one there, so
+  // moving a cut within its row does not get re-created at the old spot.
+  const fixedRows = new Set([...fixedCuts].map((c) => c.split(",")[1]));
+  for (const c of [...best.cuts]) {
+    if (!fixedCuts.has(c) && fixedRows.has(c.split(",")[1])) best.cuts.delete(c);
+  }
   return { cuts: best.cuts, jumpers: best.jumpers, diagnostics: best.diagnostics };
 }
 

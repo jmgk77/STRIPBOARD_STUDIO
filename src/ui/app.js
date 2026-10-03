@@ -6,7 +6,7 @@ import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } 
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
 import { optimize as optimizeLayout, COMPACT_WEIGHTS } from "../core/optimize.js";
-import { contentBounds, rotateLocal } from "../core/geometry.js";
+import { contentBounds, rotateLocal, rowLabel } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
 import { exportNetlist } from "../core/netlist.js";
 import { alignCuts } from "../core/align.js";
@@ -275,13 +275,39 @@ export class App {
     box.innerHTML = "";
     const comp = this.selected ? this.project.components.get(this.selected) : null;
     if (!comp) {
-      if (this.pending) box.textContent = `connect: ${this.pending} — click another pin`;
-      else if (this.selectedNet) {
+      if (this.pending) {
+        box.textContent = `connect: ${this.pending} — click another pin`;
+        return;
+      }
+      if (this.selectedWire?.kind === "jumper") {
+        const j = this.project.jumpers[this.selectedWire.i];
+        if (j) {
+          const net = this.project.nets.find((n) => n.id === j.net);
+          const a = `${j.x}${rowLabel(j.ya, this.project.rows)}`;
+          const b = `${j.x}${rowLabel(j.yb, this.project.rows)}`;
+          this._wireBox(box, `Jumper · ${a}-${b}`, [
+            `net: ${net ? net.label || net.id : "(none)"}`,
+            `length: ${Math.abs(j.yb - j.ya)} holes`,
+            `state: ${j.fixed ? "fixed" : "auto"}`,
+          ], !!j.fixed);
+          return;
+        }
+      }
+      if (this.selectedWire?.kind === "cut") {
+        const [x, y] = this.selectedWire.key.split(",").map(Number);
+        const fixed = this.project.fixedCuts?.has(this.selectedWire.key);
+        this._wireBox(box, `Cut · ${rowLabel(y, this.project.rows)}${x}`, [
+          "breaks the strip on this row",
+          `state: ${fixed ? "fixed" : "auto"}`,
+        ], !!fixed);
+        return;
+      }
+      if (this.selectedNet) {
         const net = this.project.nets.find((n) => n.id === this.selectedNet);
         box.textContent = `net ${net?.label || this.selectedNet} selected`;
-      } else {
-        box.textContent = "(none)";
+        return;
       }
+      box.textContent = "(none)";
       return;
     }
     const part = LIBRARY.get(comp.part);
@@ -477,6 +503,34 @@ export class App {
     this.selected = next;
     this.render();
     this._status(`renamed ${old} to ${next}`);
+  }
+
+  _wireBox(box, title, lines, fixed) {
+    box.innerHTML = "";
+    const head = document.createElement("div");
+    head.textContent = title;
+    box.appendChild(head);
+    for (const line of lines) {
+      const d = document.createElement("div");
+      d.className = "muted";
+      d.textContent = line;
+      box.appendChild(d);
+    }
+    const row = document.createElement("div");
+    row.className = "pinrow";
+    const unfix = document.createElement("button");
+    unfix.className = "minibtn";
+    unfix.textContent = "Unfix";
+    unfix.disabled = !fixed;
+    unfix.title = "release this item so Solve may change it";
+    unfix.addEventListener("click", () => this.unfixSelected());
+    const del = document.createElement("button");
+    del.className = "minibtn";
+    del.textContent = "Delete";
+    del.addEventListener("click", () => this.deleteSelected());
+    row.appendChild(unfix);
+    row.appendChild(del);
+    box.appendChild(row);
   }
 
   openNewPart() {
