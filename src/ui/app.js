@@ -5,7 +5,7 @@ import { Component, Project, pinLabel, pinKey, splitPin } from "../core/model.js
 import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } from "../core/library.js";
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
-import { optimize as optimizeLayout, COMPACT_WEIGHTS, EASY_WEIGHTS } from "../core/optimize.js";
+import { optimizeAsync, COMPACT_WEIGHTS, EASY_WEIGHTS } from "../core/optimize.js";
 import { componentBody, componentPins, contentBounds, rotateLocal, rowLabel, rowLetter } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
 import { exportNetlist } from "../core/netlist.js";
@@ -69,6 +69,7 @@ export class App {
     this.boardResize = null;
     this.dirty = false;
     this._autosaveTimer = null;
+    this._busy = false;
 
     this._bindToolbar();
     this._bindBoard();
@@ -1291,15 +1292,16 @@ export class App {
   }
 
   switchTab(name) {
+    if (this._busy) return; // one compute at a time
     if (name !== "edit" && !this.versions[name]) {
-      this._runBusy(`Computing ${name}…`, () => {
-        this.versions[name] = this._computeVersion(name);
+      this._runBusy(`Computing ${name}…`, async () => {
+        this.versions[name] = await this._computeVersion(name);
         this.active = name;
         this.selected = null;
         this.selectedWire = null;
         this.selectedNet = null;
         this.render();
-        this._status(`${name} ready${this._computeTimedOut ? " (stopped early to stay responsive)" : ""} — 'Use this' to make the edit board`);
+        this._status(`${name} ready — 'Use this' to make the edit board`);
       });
       return;
     }
@@ -1311,7 +1313,7 @@ export class App {
     if (name !== "edit") this._status(`${name} (cached) — 'Use this' to make it the edit board`);
   }
 
-  _computeVersion(name) {
+  async _computeVersion(name) {
     // Trim crops whatever is on screen (so "Solve -> Trim" keeps the Solve routing);
     // the other tabs always recompute from the editable board.
     const base = name === "trim" ? this._shownProject() : this.project;
@@ -1341,18 +1343,16 @@ export class App {
       }
       return clone;
     }
-    this._computeTimedOut = false;
     if (name === "optimize" || name === "compact" || name === "easy") {
-      // A time budget keeps the synchronous optimizer from freezing the tab. If it stops
-      // early we still return the best layout found and say so in the status line.
+      // Cooperative: the optimizer yields to the event loop so it may take as long as it
+      // needs without freezing the tab (no time limit).
       const opts =
         name === "compact"
-          ? { weights: COMPACT_WEIGHTS, maxPasses: 6, maxEvaluations: 300, maxMs: 2500 }
+          ? { weights: COMPACT_WEIGHTS, maxPasses: 6, maxEvaluations: 300 }
           : name === "easy"
-            ? { weights: EASY_WEIGHTS, maxPasses: 6, maxEvaluations: 300, maxMs: 2500 }
-            : { maxMs: 1500 };
-      const info = optimizeLayout(clone, LIBRARY, opts);
-      if (info.timedOut) this._computeTimedOut = true;
+            ? { weights: EASY_WEIGHTS, maxPasses: 6, maxEvaluations: 300 }
+            : {};
+      await optimizeAsync(clone, LIBRARY, opts);
     }
     // solve / optimize / compact all finish by routing the (possibly optimized) board
     const result = route(clone, LIBRARY);
@@ -2179,12 +2179,14 @@ export class App {
   /** Run a heavy synchronous task with a visible "busy" state painted first. */
   _runBusy(msg, fn) {
     this._status(msg);
+    this._busy = true;
     document.body.classList.add("busy");
     requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
+      requestAnimationFrame(async () => {
         try {
-          fn();
+          await fn();
         } finally {
+          this._busy = false;
           document.body.classList.remove("busy");
         }
       }),

@@ -5,7 +5,7 @@ import { Project, Component, Net, pinKey } from "../src/core/model.js";
 import { LIBRARY } from "../src/core/library.js";
 import { analyze } from "../src/core/connectivity.js";
 import { contentBounds } from "../src/core/geometry.js";
-import { optimize, EASY_WEIGHTS, COMPACT_WEIGHTS, BALANCED_WEIGHTS } from "../src/core/optimize.js";
+import { optimize, optimizeAsync, EASY_WEIGHTS, COMPACT_WEIGHTS, BALANCED_WEIGHTS } from "../src/core/optimize.js";
 import { route } from "../src/core/router.js";
 
 test("optimizer fixes an off-board rotated part", () => {
@@ -55,6 +55,15 @@ test("three presets exist; easy favours fewer jumpers than balanced", () => {
   const easy = build();
   optimize(easy, LIBRARY, { weights: EASY_WEIGHTS, maxPasses: 6, maxEvaluations: 300 });
   assert.ok(jumpers(easy) <= jumpers(bal), `easy ${jumpers(easy)} vs balanced ${jumpers(bal)}`);
+});
+
+test("optimizeAsync (cooperative) resolves and never worsens the score", async () => {
+  const p = new Project({ cols: 16, rows: 12 });
+  p.addComponent(new Component({ ref: "R1", part: "resistor", x: 4, y: 1, rot: 180 }));
+  p.addComponent(new Component({ ref: "R2", part: "resistor", x: 10, y: 6, locked: true }));
+  p.nets = [new Net("A", [pinKey("R1", "2"), pinKey("R2", "1")])];
+  const info = await optimizeAsync(p, LIBRARY, { maxPasses: 3, maxEvaluations: 80 });
+  assert.ok(info.score <= info.startScore, `${info.score} <= ${info.startScore}`);
 });
 
 test("a time budget stops the optimizer early and reports timedOut", () => {

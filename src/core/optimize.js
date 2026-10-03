@@ -162,14 +162,18 @@ function evaluate(project, library, cache, weights) {
   return val;
 }
 
-export function optimize(
+// The algorithm is a generator so the async wrapper can periodically yield to the event
+// loop (keeps the browser responsive) while the sync wrapper drains it in one go.
+function* optimizeGen(
   project,
   library,
-  { weights: overrides = {}, maxPasses = 4, maxEvaluations = 120, maxMs = Infinity } = {},
+  { weights: overrides = {}, maxPasses = 4, maxEvaluations = 120, maxMs = Infinity, cooperative = false, yieldMs = 12 } = {},
 ) {
   const weights = { ...DEFAULT_WEIGHTS, ...overrides };
   const cache = new Map();
   let evaluations = 0;
+  let lastYield = Date.now();
+  const shouldYield = () => cooperative && Date.now() - lastYield >= yieldMs;
   // Time budget: keep the synchronous run short enough that the browser does not flag the
   // page as unresponsive (each evaluation is a full route + analyze).
   const deadline = maxMs === Infinity ? Infinity : Date.now() + maxMs;
@@ -198,6 +202,10 @@ export function optimize(
         if (seen.has(key)) continue;
         seen.add(key);
         if (budget()) break;
+        if (shouldYield()) {
+          lastYield = Date.now();
+          yield evaluations;
+        }
         for (const c of free) {
           c.x += dx;
           c.y += dy;
@@ -225,6 +233,10 @@ export function optimize(
     // 2. refine each free unit: a lone part rotates/moves/bends; a group only translates.
     for (const unit of units) {
       if (budget()) break;
+      if (shouldYield()) {
+        lastYield = Date.now();
+        yield evaluations;
+      }
       const members = unit.members;
       const bases = members.map((m) => ({ x: m.x, y: m.y, rot: m.rot, span: m.span }));
       // Candidates are transforms: absolute fields for a singleton, dx/dy for a rigid group.
@@ -270,6 +282,10 @@ export function optimize(
       let bestVal = best;
       for (const cand of candidates) {
         if (budget()) break;
+        if (shouldYield()) {
+          lastYield = Date.now();
+          yield evaluations;
+        }
         apply(cand);
         const val = evaluate(project, library, cache, weights);
         evaluations += 1;
@@ -289,4 +305,26 @@ export function optimize(
 
   const timedOut = Date.now() > deadline;
   return { score: best.score, startScore, evaluations, components: free.length, spread: best.spread, wire: best.wire, timedOut };
+}
+
+/** Synchronous optimize: drains the generator in one task (used by tests and headless code). */
+export function optimize(project, library, opts = {}) {
+  const it = optimizeGen(project, library, opts);
+  let r = it.next();
+  while (!r.done) r = it.next();
+  return r.value;
+}
+
+/**
+ * Cooperative optimize: runs the same algorithm but yields to the event loop every
+ * `yieldMs`, so a long Compact pass does not freeze the tab (no "page unresponsive").
+ */
+export async function optimizeAsync(project, library, opts = {}) {
+  const it = optimizeGen(project, library, { ...opts, cooperative: true });
+  let r = it.next();
+  while (!r.done) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    r = it.next();
+  }
+  return r.value;
 }
