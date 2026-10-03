@@ -125,3 +125,36 @@ register(new PartDef({
 export function listParts() {
   return [...LIBRARY.values()];
 }
+
+/** Register a part at runtime (custom pin bars). */
+export function registerPart(part) {
+  LIBRARY.set(part.name, part);
+  return part;
+}
+
+/**
+ * Build a pin bar: a single column of pins, or two columns `gap` holes apart.
+ * `spec` is plain data so it can be stored in the project and rebuilt on load:
+ * { name, label, count, gap, doubleRow, prefix, leftPrefix, rightPrefix }
+ */
+export function buildBarPart(spec) {
+  const { name, label, count, gap = 3, doubleRow = false, prefix = "", leftPrefix = "L", rightPrefix = "R" } = spec;
+  const n = Math.max(1, Math.min(60, Math.round(count) || 1));
+  let pins;
+  if (doubleRow) {
+    const g = Math.max(2, Math.min(30, Math.round(gap) || 3));
+    pins = dualRow(
+      Array.from({ length: n }, (_, i) => `${leftPrefix}${i + 1}`),
+      Array.from({ length: n }, (_, i) => `${rightPrefix}${i + 1}`),
+      g,
+    );
+  } else {
+    pins = Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i + 1}`, x: 0, y: i }));
+  }
+  return new PartDef({ name, label, kind: doubleRow ? "module" : "header", pins });
+}
+
+/** Rebuild and register every custom part stored in a project. */
+export function registerProjectParts(parts = []) {
+  for (const spec of parts) if (spec?.name && !LIBRARY.has(spec.name)) registerPart(buildBarPart(spec));
+}

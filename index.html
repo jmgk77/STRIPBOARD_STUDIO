@@ -41,7 +41,11 @@
     <span id="status" class="status"></span>
   </header>
   <main>
-    <aside id="palette"><h3>Parts</h3><div id="palette-list" class="list"></div></aside>
+    <aside id="palette">
+      <h3>Parts</h3>
+      <button id="newPart" class="wide">+ New pin bar</button>
+      <div id="palette-list" class="list"></div>
+    </aside>
     <div id="canvasWrap"><svg id="board" xmlns="http://www.w3.org/2000/svg"></svg></div>
     <aside id="panel">
       <h3>Selection</h3>
@@ -53,6 +57,28 @@
     </aside>
   </main>
   <input type="file" id="file" accept=".json,application/json" hidden>
+  <dialog id="partDlg">
+    <div class="dlgbar">
+      <strong>New pin bar</strong>
+      <span class="grow"></span>
+      <button id="partCancel">Cancel</button>
+      <button id="partCreate" class="primary">Create</button>
+    </div>
+    <div class="form">
+      <label>Label <input id="pLabel" type="text" value="Header" size="16"></label>
+      <label>Type
+        <select id="pDouble">
+          <option value="no">single row</option>
+          <option value="yes">double row</option>
+        </select>
+      </label>
+      <label>Pins <input id="pCount" type="number" min="1" max="60" value="8"></label>
+      <label id="rowGap">Gap between rows (holes) <input id="pGap" type="number" min="2" max="30" value="3"></label>
+      <label id="rowPrefix">Pin prefix <input id="pPrefix" type="text" value="" size="8" placeholder="(none)"></label>
+      <label id="rowLeft">Left prefix <input id="pLeft" type="text" value="L" size="8"></label>
+      <label id="rowRight">Right prefix <input id="pRight" type="text" value="R" size="8"></label>
+    </div>
+  </dialog>
   <dialog id="asciiDlg">
     <div class="dlgbar">
       <strong>Board as text</strong>

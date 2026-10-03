@@ -2,7 +2,7 @@
 // in core/. Undo/redo is whole-project snapshots taken before each change.
 
 import { Component, Project, pinLabel } from "../core/model.js";
-import { LIBRARY, listParts } from "../core/library.js";
+import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } from "../core/library.js";
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
 import { optimize as optimizeLayout, COMPACT_WEIGHTS } from "../core/optimize.js";
@@ -10,7 +10,7 @@ import { contentBounds } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
 import { render, CELL, PAD } from "./scene.js";
 
-const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q" };
+const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q", module: "U" };
 
 export class App {
   constructor() {
@@ -248,6 +248,48 @@ export class App {
     this._afterStructuralChange();
   }
 
+  openNewPart() {
+    document.getElementById("pLabel").value = "Header";
+    document.getElementById("pDouble").value = "no";
+    document.getElementById("pCount").value = 8;
+    document.getElementById("pGap").value = 3;
+    document.getElementById("pPrefix").value = "";
+    document.getElementById("pLeft").value = "L";
+    document.getElementById("pRight").value = "R";
+    this.updatePartForm();
+    document.getElementById("partDlg").showModal();
+  }
+
+  updatePartForm() {
+    const doubleRow = document.getElementById("pDouble").value === "yes";
+    for (const id of ["rowGap", "rowLeft", "rowRight"]) {
+      document.getElementById(id).style.display = doubleRow ? "flex" : "none";
+    }
+    document.getElementById("rowPrefix").style.display = doubleRow ? "none" : "flex";
+  }
+
+  createPart() {
+    const label = document.getElementById("pLabel").value.trim() || "Bar";
+    const doubleRow = document.getElementById("pDouble").value === "yes";
+    const count = Math.max(1, Number(document.getElementById("pCount").value) || 1);
+    const gap = Number(document.getElementById("pGap").value) || 3;
+    const prefix = document.getElementById("pPrefix").value.trim();
+    const leftPrefix = document.getElementById("pLeft").value.trim() || "L";
+    const rightPrefix = document.getElementById("pRight").value.trim() || "R";
+    const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bar";
+    const base = `custom-${slug}`;
+    let name = base;
+    let k = 2;
+    while (LIBRARY.has(name)) name = `${base}-${k++}`;
+    const spec = { name, label, count, gap, doubleRow, prefix, leftPrefix, rightPrefix };
+    registerPart(buildBarPart(spec));
+    this.snapshot();
+    this.project.customParts.push(spec);
+    document.getElementById("partDlg").close();
+    this.render();
+    this._status(`created ${label} (${count} ${doubleRow ? "x2" : ""} pins)`);
+  }
+
   rotateSelected() {
     const comp = this.selected && this.project.components.get(this.selected);
     if (!comp) return;
@@ -459,6 +501,7 @@ export class App {
   async open(file) {
     const text = await file.text();
     this.project = Project.fromJSON(JSON.parse(text));
+    registerProjectParts(this.project.customParts);
     document.getElementById("cols").value = this.project.cols;
     document.getElementById("rows").value = this.project.rows;
     this.selected = null;
@@ -477,6 +520,10 @@ export class App {
     on("new", () => this.newProject());
     on("save", () => this.save());
     on("open", () => document.getElementById("file").click());
+    on("newPart", () => this.openNewPart());
+    document.getElementById("partCancel").addEventListener("click", () => document.getElementById("partDlg").close());
+    document.getElementById("partCreate").addEventListener("click", () => this.createPart());
+    document.getElementById("pDouble").addEventListener("change", () => this.updatePartForm());
     on("undo", () => this.undo());
     on("redo", () => this.redo());
     on("rotate", () => this.rotateSelected());

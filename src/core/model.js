@@ -61,6 +61,7 @@ export class Project {
     this.cuts = new Set(); // "x,y" cells where the copper is broken
     this.fixedCuts = new Set(); // the subset the user pinned; Solve keeps these
     this.jumpers = []; // { x, ya, yb, net?, fixed? }
+    this.customParts = []; // specs of user-defined pin bars (see library.buildBarPart)
   }
 
   addComponent(comp) {
@@ -123,6 +124,7 @@ export class Project {
       cuts: [...this.cuts].sort(),
       fixedCuts: [...this.fixedCuts].sort(),
       jumpers: this.jumpers.map((j) => ({ ...j })),
+      customParts: this.customParts.map((p) => ({ ...p })),
     };
   }
 
@@ -139,6 +141,7 @@ export class Project {
       if (j.fixed) out.fixed = true;
       return out;
     });
+    p.customParts = (o.customParts ?? []).map((s) => ({ ...s }));
     return p;
   }
 }
