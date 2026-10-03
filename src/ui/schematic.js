@@ -1,11 +1,12 @@
 // A basic, read-only schematic view (IEC-style symbols), derived from the same model.
 // Read-only: edit the schematic in KiCad via netlist export if you need more.
 //
-// Wiring rules (standard look, never overlapping):
-//   * a 2-pin net is drawn as a STRAIGHT horizontal wire only when both pins end up on
-//     the same row with a clear path (2-pin parts are flipped to face each other when
-//     that makes it possible);
-//   * every other net is shown with net LABELS (name, or a number when unnamed) at pins.
+// Wiring: a 2-pin net is routed as an orthogonal wire A -> (channel, Ay) -> (channel, By)
+// -> B with its own vertical channel and its own horizontal lanes, so segments never
+// overlap and never cross a component body; the channel must leave each pin outward.
+// Anything that cannot be routed that way is shown with net labels (name or number).
+//
+// `planSchematic` is pure (no DOM) so it can be unit-tested; `renderSchematic` draws it.
 
 import { splitPin } from "../core/model.js";
 
@@ -32,7 +33,7 @@ function symbolLayout(part) {
       body: { w: 56, h: 22 },
       left: [{ id: pins[0].id, lx: -58, ly: 0 }],
       right: [{ id: pins[1].id, lx: 58, ly: 0 }],
-      box: { w: 200, h: 70 },
+      box: { w: 200, h: 76 },
     };
   }
   const left = dual ? pins.filter((p) => p.x === 0) : pins;
@@ -40,13 +41,13 @@ function symbolLayout(part) {
   const rows = Math.max(left.length, right.length, 1);
   const h = rows * 18 + 16;
   const place = (list, side) =>
-    list.map((p, i) => ({ id: p.id, lx: side * 66, ly: -(rows - 1) * 9 + i * 18 }));
+    list.map((p, i) => ({ id: p.id, lx: side * 70, ly: -(rows - 1) * 9 + i * 18 }));
   return {
     two: false,
     body: { w: dual ? 96 : 72, h },
     left: place(left, -1),
     right: place(right, 1),
-    box: { w: (dual ? 124 : 100) + 110, h: h + 40 },
+    box: { w: (dual ? 124 : 100) + 150, h: h + 48 },
   };
 }
 
@@ -88,9 +89,9 @@ function pack(project, library) {
     const layout = symbolLayout(part);
     return { comp, part, layout, left: layout.left.slice(), right: layout.right.slice(), all: [] };
   });
-  const maxW = 900;
-  const gapX = 46;
-  const gapY = 48;
+  const maxW = 980;
+  const gapX = 50;
+  const gapY = 52;
   let x = 40;
   let y = 40;
   let rowH = 0;
@@ -107,35 +108,32 @@ function pack(project, library) {
     x += w + gapX;
     rowH = Math.max(rowH, h);
   }
-  // 2-pin parts flip to face the part on the other end of a 2-pin net (so wires align).
+  // 2-pin parts orient their connected pin toward the other end (so wires can go straight)
   for (const it of items) {
-    if (it.layout.two) {
-      const [pinA, pinB] = [it.layout.left[0].id, it.layout.right[0].id];
-      let scoreNormal = 0;
-      let scoreFlip = 0;
-      for (const net of project.nets) {
-        if (net.pins.size !== 2) continue;
-        const keys = [...net.pins];
-        const mine = keys.find((k) => splitPin(k).ref === it.comp.ref);
-        if (!mine) continue;
-        const otherRef = splitPin(keys.find((k) => k !== mine)).ref;
-        const other = items.find((i) => i.comp.ref === otherRef);
-        if (!other || Math.abs(other.cy - it.cy) > 1) continue;
-        const want = other.cx > it.cx ? "right" : "left";
-        const pid = splitPin(mine).pin;
-        const normalSide = pid === pinA ? "left" : "right";
-        const flipSide = pid === pinA ? "right" : "left";
-        if (normalSide === want) scoreNormal += 1;
-        if (flipSide === want) scoreFlip += 1;
-      }
-      if (scoreFlip > scoreNormal) {
-        it.left = it.layout.right.map((p) => ({ ...p, lx: -p.lx }));
-        it.right = it.layout.left.map((p) => ({ ...p, lx: -p.lx }));
-      }
+    if (!it.layout.two) continue;
+    const [pinA, pinB] = [it.layout.left[0].id, it.layout.right[0].id];
+    let normal = 0;
+    let flip = 0;
+    for (const net of project.nets) {
+      if (net.pins.size !== 2) continue;
+      const keys = [...net.pins];
+      const mine = keys.find((k) => splitPin(k).ref === it.comp.ref);
+      if (!mine) continue;
+      const other = items.find((i) => i.comp.ref === splitPin(keys.find((k) => k !== mine)).ref);
+      if (!other) continue;
+      const want = other.cx > it.cx ? "right" : "left";
+      const pid = splitPin(mine).pin;
+      if ((pid === pinA ? "left" : "right") === want) normal += 1;
+      if ((pid === pinA ? "right" : "left") === want) flip += 1;
+    }
+    if (flip > normal) {
+      it.left = it.layout.right.map((p) => ({ ...p, lx: -p.lx }));
+      it.right = it.layout.left.map((p) => ({ ...p, lx: -p.lx }));
     }
     it.all = [...it.left, ...it.right];
   }
-  return { items, width: maxW + 40, height: y + rowH + 60 };
+  for (const it of items) if (it.all.length === 0) it.all = [...it.left, ...it.right];
+  return { items, width: maxW + 40, height: y + rowH + 64 };
 }
 
 function bodyRect(it) {
@@ -147,6 +145,86 @@ function bodyRect(it) {
   };
 }
 
+function channelCandidates(ax, sA, bx, sB) {
+  let lower = -Infinity;
+  let upper = Infinity;
+  if (sA > 0) lower = Math.max(lower, ax + 12);
+  else upper = Math.min(upper, ax - 12);
+  if (sB > 0) lower = Math.max(lower, bx + 12);
+  else upper = Math.min(upper, bx - 12);
+  if (lower > upper) return [];
+  const out = [];
+  if (Number.isFinite(lower) && Number.isFinite(upper)) {
+    const span = upper - lower;
+    out.push(Math.round(lower + span / 2), Math.round(lower + span * 0.25), Math.round(lower + span * 0.75));
+  } else if (Number.isFinite(lower)) {
+    out.push(Math.round(lower + 10), Math.round(lower + 34), Math.round(lower + 70), Math.round(lower + 120));
+  } else if (Number.isFinite(upper)) {
+    out.push(Math.round(upper - 10), Math.round(upper - 34), Math.round(upper - 70), Math.round(upper - 120));
+  } else {
+    out.push(Math.round((ax + bx) / 2));
+  }
+  return out;
+}
+
+/** Pure layout + wiring plan. Returns items placed and the wires to draw. */
+export function planSchematic(project, library) {
+  const { items, width, height } = pack(project, library);
+  const boxes = items.map((it) => ({ ref: it.comp.ref, r: bodyRect(it) }));
+  const netPins = new Map();
+  for (const it of items) {
+    for (const p of it.all) {
+      const net = project.netOf(`${it.comp.ref}.${p.id}`);
+      if (!net) continue;
+      const list = netPins.get(net.id) ?? [];
+      list.push({ x: it.cx + p.lx, y: it.cy + p.ly, side: it.left.includes(p) ? -1 : 1, ref: it.comp.ref });
+      netPins.set(net.id, list);
+    }
+  }
+
+  const usedH = [];
+  const usedV = [];
+  const clearH = (y, x0, x1, selfRefs) => {
+    const lo = Math.min(x0, x1);
+    const hi = Math.max(x0, x1);
+    for (const { ref, r } of boxes) {
+      if (selfRefs.includes(ref)) continue;
+      if (y >= r.y0 - 2 && y <= r.y1 + 2 && hi > r.x0 - 4 && lo < r.x1 + 4) return false;
+    }
+    for (const s of usedH) if (Math.abs(s.y - y) < 1 && hi > s.x0 - 3 && lo < s.x1 + 3) return false;
+    return true;
+  };
+  const clearV = (x, y0, y1, selfRefs) => {
+    const lo = Math.min(y0, y1);
+    const hi = Math.max(y0, y1);
+    for (const { ref, r } of boxes) {
+      if (selfRefs.includes(ref)) continue;
+      if (x >= r.x0 - 2 && x <= r.x1 + 2 && hi > r.y0 - 3 && lo < r.y1 + 3) return false;
+    }
+    for (const s of usedV) if (Math.abs(s.x - x) < 1 && hi > s.y0 - 3 && lo < s.y1 + 3) return false;
+    return true;
+  };
+
+  const wires = [];
+  for (const net of project.nets) {
+    const pts = netPins.get(net.id);
+    if (!pts || pts.length !== 2) continue;
+    const [a, b] = pts;
+    const selfRefs = [a.ref, b.ref];
+    for (const cx of channelCandidates(a.x, a.side, b.x, b.side)) {
+      if (!clearH(a.y, a.x, cx, selfRefs)) continue;
+      if (!clearV(cx, a.y, b.y, selfRefs)) continue;
+      if (!clearH(b.y, cx, b.x, selfRefs)) continue;
+      usedH.push({ y: a.y, x0: Math.min(a.x, cx), x1: Math.max(a.x, cx) });
+      usedV.push({ x: cx, y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y) });
+      usedH.push({ y: b.y, x0: Math.min(cx, b.x), x1: Math.max(cx, b.x) });
+      wires.push({ netId: net.id, points: [{ x: a.x, y: a.y }, { x: cx, y: a.y }, { x: cx, y: b.y }, { x: b.x, y: b.y }] });
+      break;
+    }
+  }
+  return { items, width, height, wires, wiredNets: new Set(wires.map((w) => w.netId)), netPins };
+}
+
 export function renderSchematic(svg, state) {
   const { project, library } = state;
   const focus = state.focusNets ?? new Set();
@@ -156,49 +234,13 @@ export function renderSchematic(svg, state) {
   const labelOf = (net) => (net.label ? net.label : netNumber.get(net.id));
 
   svg.innerHTML = "";
-  const { items, width, height } = pack(project, library);
+  const { items, width, height, wires, wiredNets } = planSchematic(project, library);
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.setAttribute("width", width);
   svg.setAttribute("height", height);
   el("rect", { x: 0, y: 0, width, height, fill: "#fbfbf7" }, svg);
   el("text", { x: width / 2, y: 20, "text-anchor": "middle", "font-size": 13, fill: "#6b7280" }, svg).textContent = `${project.title} — schematic`;
 
-  // placed pins per net
-  const netPins = new Map();
-  for (const it of items) {
-    for (const p of it.all) {
-      const net = project.netOf(`${it.comp.ref}.${p.id}`);
-      if (!net) continue;
-      const list = netPins.get(net.id) ?? [];
-      list.push({ x: it.cx + p.lx, y: it.cy + p.ly, ref: it.comp.ref });
-      netPins.set(net.id, list);
-    }
-  }
-
-  // decide which 2-pin nets become straight wires: same row, clear path, no overlap
-  const boxes = items.map((it) => ({ it, r: bodyRect(it) }));
-  const wireNets = new Map(); // netId -> [a,b]
-  const usedSegments = [];
-  for (const net of project.nets) {
-    const pts = netPins.get(net.id);
-    if (!pts || pts.length !== 2) continue;
-    const [a, b] = pts;
-    if (Math.abs(a.y - b.y) > 0.5) continue;
-    const y = a.y;
-    const lo = Math.min(a.x, b.x);
-    const hi = Math.max(a.x, b.x);
-    const blocked = boxes.some(({ it, r }) => {
-      if (it.comp.ref === a.ref || it.comp.ref === b.ref) return false;
-      return y >= r.y0 - 2 && y <= r.y1 + 2 && hi > r.x0 - 4 && lo < r.x1 + 4;
-    });
-    if (blocked) continue;
-    const overlaps = usedSegments.some((s) => Math.abs(s.y - y) < 1 && hi > s.lo - 4 && lo < s.hi + 4);
-    if (overlaps) continue;
-    usedSegments.push({ y, lo, hi });
-    wireNets.set(net.id, [a, b]);
-  }
-
-  // symbols (+ labels for everything that is not a straight wire)
   for (const it of items) {
     const { comp, part, layout } = it;
     const s = el("g", { "data-ref": comp.ref, class: "component hoverable", cursor: "pointer" }, svg);
@@ -212,8 +254,11 @@ export function renderSchematic(svg, state) {
       const py = it.cy + p.ly;
       el("line", { x1: edgeX, y1: py, x2: px, y2: py, stroke: LINE, "stroke-width": 1.4 }, s);
       el("circle", { cx: px, cy: py, r: 2.6, fill: LINE }, s);
+      // pin number INSIDE the body
+      el("text", { x: side < 0 ? bx + 5 : bx + layout.body.w - 5, y: py + 3, "text-anchor": side < 0 ? "start" : "end", "font-size": 7.5, fill: "#888" }, s).textContent = p.id;
       const net = project.netOf(`${comp.ref}.${p.id}`);
-      if (net && !wireNets.has(net.id)) {
+      if (net && !wiredNets.has(net.id)) {
+        // complex net (or unroutable): a label outside instead of a wire
         const lit = focus.has(net.id);
         const col = colors.get(net.id);
         const g = el("g", { "data-net": net.id, class: "wire hoverable", cursor: "pointer" }, s);
@@ -222,8 +267,6 @@ export function renderSchematic(svg, state) {
           x: px + side * 20, y: py + 3, "text-anchor": side < 0 ? "end" : "start",
           "font-size": 10, "font-weight": lit ? 700 : 600, fill: col,
         }, g).textContent = labelOf(net);
-      } else if (!net) {
-        el("text", { x: px + side * 6, y: py - 3, "text-anchor": side < 0 ? "end" : "start", "font-size": 8, fill: "#999" }, s).textContent = p.id;
       }
     }
     drawGlyph(s, part, it.cx, it.cy);
@@ -232,20 +275,17 @@ export function renderSchematic(svg, state) {
     el("text", { x: it.cx, y: by - 7, "text-anchor": "middle", "font-size": 10, fill: sel ? "#2a9d5f" : "#101010", "font-weight": sel ? 700 : 400 }, s).textContent = label;
   }
 
-  // straight wires for the simple nets
-  for (const net of project.nets) {
-    const pts = wireNets.get(net.id);
-    if (!pts) continue;
-    const [a, b] = pts;
-    const lit = focus.has(net.id);
-    const col = colors.get(net.id);
-    const g = el("g", { "data-net": net.id, class: "wire hoverable", cursor: "pointer" }, svg);
-    el("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: col, "stroke-width": lit ? 3 : 1.8 }, g);
-    for (const p of [a, b]) {
-      el("circle", { cx: p.x, cy: p.y, r: 3.2, fill: col }, g);
+  for (const wire of wires) {
+    const net = project.nets.find((n) => n.id === wire.netId);
+    const lit = focus.has(wire.netId);
+    const col = colors.get(wire.netId);
+    const g = el("g", { "data-net": wire.netId, class: "wire hoverable", cursor: "pointer" }, svg);
+    el("polyline", { points: wire.points.map((p) => `${p.x},${p.y}`).join(" "), fill: "none", stroke: col, "stroke-width": lit ? 3 : 1.8 }, g);
+    for (const p of [wire.points[0], wire.points[wire.points.length - 1]]) {
       el("circle", { cx: p.x, cy: p.y, r: 8, fill: "transparent" }, g);
     }
-    el("text", { x: (a.x + b.x) / 2, y: a.y - 5, "text-anchor": "middle", "font-size": 10, "font-weight": 600, fill: col }, g).textContent = labelOf(net);
+    const mid = wire.points[1];
+    el("text", { x: mid.x + 4, y: mid.y - 4, "font-size": 10, "font-weight": 600, fill: col }, g).textContent = net ? net.label || netNumber.get(net.id) : "";
   }
 }
 
