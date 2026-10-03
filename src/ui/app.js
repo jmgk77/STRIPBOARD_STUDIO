@@ -14,6 +14,7 @@ import { render, CELL, PAD } from "./scene.js";
 import { renderSchematic } from "./schematic.js";
 
 const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q", module: "U" };
+const AUTOSAVE_KEY = "stripboard-studio:autosave";
 
 export class App {
   constructor() {
@@ -42,10 +43,14 @@ export class App {
     this.wireDrag = null;
     this.spanDrag = null;
     this.boardResize = null;
+    this.dirty = false;
+    this._autosaveTimer = null;
 
     this._bindToolbar();
     this._bindBoard();
     this._bindKeyboard();
+    this._bindUnload();
+    this._restoreAutosave();
     this._syncSizeInputs();
     this.render();
   }
@@ -109,6 +114,67 @@ export class App {
     this._renderProblems();
     this._renderSelection();
     this._updateTabUI();
+    this._scheduleAutosave();
+  }
+
+  // -- autosave / dirty tracking -------------------------------------------------
+
+  _restoreAutosave() {
+    let data;
+    try {
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) return;
+      data = JSON.parse(raw);
+    } catch {
+      return; // storage unavailable or corrupt: fall back to a fresh board
+    }
+    if (!data?.project) return;
+    try {
+      this.project = Project.fromJSON(data.project);
+      registerProjectParts(this.project.customParts);
+    } catch {
+      return;
+    }
+    this.fileName = data.fileName ?? null;
+    // Restore the exact dirty flag that was persisted, so a board the user saved does not
+    // trigger an unload prompt just because it came back from autosave.
+    this.dirty = data.dirty === true;
+    if (this.dirty) this._status("recovered unsaved work from this browser");
+  }
+
+  _persistAutosave() {
+    try {
+      localStorage.setItem(
+        AUTOSAVE_KEY,
+        JSON.stringify({
+          version: 1,
+          project: this.project.toJSON(),
+          fileName: this.fileName,
+          dirty: this.dirty,
+          savedAt: Date.now(),
+        }),
+      );
+    } catch {
+      // storage unavailable or full: autosave is best-effort, never fatal
+    }
+  }
+
+  _scheduleAutosave() {
+    clearTimeout(this._autosaveTimer);
+    this._autosaveTimer = setTimeout(() => this._persistAutosave(), 400);
+  }
+
+  _bindUnload() {
+    window.addEventListener("beforeunload", (evt) => {
+      if (!this.dirty) return;
+      evt.preventDefault();
+      evt.returnValue = "";
+    });
+  }
+
+  _confirmDiscard() {
+    if (!this.dirty) return true;
+    return window.confirm("You have unsaved changes. Discard them?");
   }
 
   _renderPalette() {
@@ -352,6 +418,29 @@ export class App {
     meta.textContent = `${part?.label ?? comp.part} — rot ${comp.rot}° — ${lock}`;
     box.appendChild(meta);
 
+    const valueRow = document.createElement("div");
+    valueRow.className = "pinrow";
+    const valueTag = document.createElement("span");
+    valueTag.className = "pintag";
+    valueTag.textContent = "value";
+    const valueInput = document.createElement("input");
+    valueInput.type = "text";
+    valueInput.value = comp.value || "";
+    valueInput.placeholder = part?.defaultValue || "(none)";
+    valueInput.disabled = !ed;
+    valueInput.addEventListener("focus", () => {
+      this._editBefore = JSON.stringify(this.project.toJSON());
+    });
+    valueInput.addEventListener("change", () => {
+      if (this._editBefore) this.pushHistory(this._editBefore);
+      this._editBefore = null;
+      comp.value = valueInput.value.trim();
+      this.render();
+    });
+    valueRow.appendChild(valueTag);
+    valueRow.appendChild(valueInput);
+    box.appendChild(valueRow);
+
     if (part?.bendable) {
       const row = document.createElement("div");
       row.className = "pinrow";
@@ -439,6 +528,7 @@ export class App {
   pushHistory(json) {
     this.history.push(json);
     this.redoStack.length = 0;
+    this.dirty = true;
   }
 
   snapshot() {
@@ -460,6 +550,7 @@ export class App {
   }
 
   _afterStructuralChange(invalidate = true) {
+    this.dirty = true;
     this.versions = { solve: null, optimize: null, compact: null, trim: null };
     if (invalidate) this.invalidateRouting();
     else this.solved = this.project.jumpers.length > 0 || this.project.cuts.size > 0;
@@ -843,6 +934,7 @@ export class App {
     this.selected = null;
     this.selectedWire = null;
     this.selectedNet = null;
+    this.dirty = true; // the applied result is not saved until the user saves
     this._syncSizeInputs();
     this._recomputeIssues();
     this.render();
@@ -1054,6 +1146,7 @@ export class App {
   // -- files --------------------------------------------------------------------
 
   newProject() {
+    if (!this._confirmDiscard()) return;
     const cols = Number(document.getElementById("cols").value) || 34;
     const rows = Number(document.getElementById("rows").value) || 26;
     this.project = new Project({ cols, rows });
@@ -1062,6 +1155,7 @@ export class App {
     this.selected = null;
     this.pending = null;
     this.solved = false;
+    this.dirty = false;
     this.history.length = 0;
     this.redoStack.length = 0;
     this._recomputeIssues();
@@ -1082,19 +1176,37 @@ export class App {
     a.download = `${this.fileName}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    this.dirty = false;
+    this._persistAutosave(); // record the cleared dirty flag right away
     this._status(`saved ${this.fileName}.json`);
   }
 
   async open(file) {
-    const text = await file.text();
-    this.project = Project.fromJSON(JSON.parse(text));
-    registerProjectParts(this.project.customParts);
+    let data;
+    try {
+      data = JSON.parse(await file.text());
+    } catch {
+      this._status(`could not open ${file.name}: not valid JSON`);
+      return;
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      this._status(`could not open ${file.name}: not a Stripboard Studio board file`);
+      return;
+    }
+    try {
+      this.project = Project.fromJSON(data);
+      registerProjectParts(this.project.customParts);
+    } catch (err) {
+      this._status(`could not open ${file.name}: ${err.message}`);
+      return;
+    }
     this.fileName = (file.name || "board").replace(/\.json$/i, "");
     document.getElementById("cols").value = this.project.cols;
     document.getElementById("rows").value = this.project.rows;
     this.selected = null;
     this.pending = null;
     this.solved = false;
+    this.dirty = false;
     this.history.length = 0;
     this.redoStack.length = 0;
     this._recomputeIssues();
@@ -1107,7 +1219,10 @@ export class App {
     const on = (id, fn) => document.getElementById(id).addEventListener("click", fn);
     on("new", () => this.newProject());
     on("save", () => this.save());
-    on("open", () => document.getElementById("file").click());
+    on("open", () => {
+      if (!this._confirmDiscard()) return;
+      document.getElementById("file").click();
+    });
     on("newPart", () => this.openNewPart());
     document.getElementById("partCancel").addEventListener("click", () => document.getElementById("partDlg").close());
     document.getElementById("partCreate").addEventListener("click", () => this.createPart());
@@ -1151,7 +1266,9 @@ export class App {
       });
     }
     document.getElementById("file").addEventListener("change", (e) => {
-      if (e.target.files[0]) this.open(e.target.files[0]);
+      const file = e.target.files[0];
+      e.target.value = ""; // allow re-selecting the same file later
+      if (file) this.open(file);
     });
     document.getElementById("copper").addEventListener("change", (e) => this.setView(e.target.checked));
     document.getElementById("cols").addEventListener("change", () => this.setBoardSize(Number(document.getElementById("cols").value), this.project.rows));

@@ -75,6 +75,7 @@ export function analyze(project, library) {
   const pinNode = new Map();
   const pinPos = new Map();
   const compBox = new Map(); // ref -> bounding box of its pins (collision proxy)
+  const flushBlock = new Set(); // cells under a flush body (wiresUnder false) where no wire may run
   for (const comp of project.components.values()) {
     const part = library.get(comp.part);
     if (!part) {
@@ -94,6 +95,13 @@ export function analyze(project, library) {
       }
       if (box.x0 !== Infinity) compBox.set(comp.ref, box);
     }
+    if (body && part.wiresUnder === false) {
+      for (let yy = Math.max(1, body.y0); yy <= Math.min(rows, body.y1); yy++) {
+        for (let xx = Math.max(1, body.x0); xx <= Math.min(cols, body.x1); xx++) {
+          flushBlock.add(cellId(xx, yy));
+        }
+      }
+    }
     for (const p of componentPins(comp, part)) {
       const key = pinKey(comp.ref, p.id);
       pinPos.set(key, { x: p.x, y: p.y });
@@ -105,6 +113,23 @@ export function analyze(project, library) {
         issues.push({ level: "error", code: "pin-on-cut", ref: comp.ref, pin: p.id, message: `${key} sits on a cut at ${at(p.x, p.y)}` });
       }
       pinNode.set(key, dsu.find(cellId(p.x, p.y)));
+    }
+  }
+
+  // A jumper may not run under a flush body (`wiresUnder` false): there is no room to
+  // solder there. Pin cells are already covered by the jumper-on/over-pin checks, so only
+  // flag body cells that do not hold a pin.
+  const pinCells = new Set([...pinPos.values()].map((p) => cellId(p.x, p.y)));
+  for (const j of project.jumpers) {
+    const lo = Math.min(j.ya, j.yb);
+    const hi = Math.max(j.ya, j.yb);
+    let under = false;
+    for (let y = lo; y <= hi && !under; y++) {
+      const c = cellId(j.x, y);
+      if (flushBlock.has(c) && !pinCells.has(c)) under = true;
+    }
+    if (under) {
+      issues.push({ level: "error", code: "jumper-under-body", message: `jumper ${at(j.x, lo)}-${at(j.x, hi)} runs under a component body` });
     }
   }
 

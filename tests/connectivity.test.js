@@ -73,6 +73,14 @@ test("problem messages give positions as letter+number", () => {
   assert.ok(onCut.message.includes("I2"), onCut.message);
 });
 
+test("a jumper under a flush body is an error", () => {
+  const p = new Project({ cols: 12, rows: 12 });
+  p.addComponent(new Component({ ref: "D1", part: "dip8", x: 3, y: 3 })); // pins x3/x6, body x4-5
+  p.jumpers = [{ x: 4, ya: 3, yb: 6 }]; // arcs through the DIP body interior (no pin there)
+  const r = analyze(p, LIBRARY);
+  assert.ok(r.issues.some((i) => i.code === "jumper-under-body"), JSON.stringify(r.issues));
+});
+
 test("two jumpers sharing a hole is an error", () => {
   const p = base();
   p.jumpers = [

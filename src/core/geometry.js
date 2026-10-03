@@ -110,10 +110,6 @@ export function componentBody(component, part) {
   };
 }
 
-/**
- * Bounding box of everything the board actually uses: component pins, cuts and jumper
- * ends. Null when nothing is placed. This is where you can cut a virgin stripboard.
- */
 /** Total half-perimeter wirelength of every net (a placement quality proxy). */
 export function totalWirelength(project, library) {
   let total = 0;
@@ -141,6 +137,10 @@ export function totalWirelength(project, library) {
   return total;
 }
 
+/**
+ * Bounding box of everything the board actually uses: component pins, cuts and jumper
+ * ends. Null when nothing is placed. This is where you can cut a virgin stripboard.
+ */
 export function contentBounds(project, library) {
   let x0 = Infinity;
   let y0 = Infinity;
