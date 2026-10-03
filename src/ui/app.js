@@ -769,8 +769,9 @@ export class App {
       const wireEl = evt.target.closest("[data-wire]");
       if (wireEl && this.mode === "select") {
         const i = Number(wireEl.dataset.wire);
+        const jumper = this.project.jumpers[i];
         this.selected = null;
-        this.selectedNet = null;
+        this.selectedNet = jumper?.net ?? null; // clicking a jumper highlights its net
         this.selectedWire = { kind: "jumper", i };
         this.wireDrag = { kind: "jumper", i, before: JSON.stringify(this.project.toJSON()) };
         this.svg.setPointerCapture(evt.pointerId);
