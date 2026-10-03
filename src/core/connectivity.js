@@ -45,6 +45,7 @@ class DSU {
  */
 export function analyze(project, library) {
   const { cols, rows } = project;
+  const netLabel = new Map(project.nets.map((n) => [n.id, n.label || n.id]));
   const present = (x, y) => x >= 1 && x <= cols && y >= 1 && y <= rows && !project.cuts.has(cellId(x, y));
 
   const dsu = new DSU();
@@ -91,11 +92,11 @@ export function analyze(project, library) {
       const key = pinKey(comp.ref, p.id);
       pinPos.set(key, { x: p.x, y: p.y });
       if (p.x < 1 || p.x > cols || p.y < 1 || p.y > rows) {
-        issues.push({ level: "error", code: "pin-off-board", message: `${key} is off the board at (${p.x},${p.y})` });
+        issues.push({ level: "error", code: "pin-off-board", ref: comp.ref, pin: p.id, message: `${key} is off the board at (${p.x},${p.y})` });
         continue;
       }
       if (project.cuts.has(cellId(p.x, p.y))) {
-        issues.push({ level: "error", code: "pin-on-cut", message: `${key} sits on a cut at (${p.x},${p.y})` });
+        issues.push({ level: "error", code: "pin-on-cut", ref: comp.ref, pin: p.id, message: `${key} sits on a cut at (${p.x},${p.y})` });
       }
       pinNode.set(key, dsu.find(cellId(p.x, p.y)));
     }
@@ -116,13 +117,13 @@ export function analyze(project, library) {
       regionNets.set(node, set);
     }
     if (placed >= 2 && roots.size > 1) {
-      unconnected.push({ level: "error", code: "net-open", message: `net ${net.id} is split across ${roots.size} copper regions` });
+      unconnected.push({ level: "error", code: "net-open", netId: net.id, message: `net ${netLabel.get(net.id)} is split across ${roots.size} copper regions` });
     }
   }
 
   const shorts = [];
   for (const [node, nets] of regionNets) {
-    if (nets.size > 1) shorts.push({ level: "error", code: "short", message: `different nets share copper (${node}): ${[...nets].join(", ")}` });
+    if (nets.size > 1) shorts.push({ level: "error", code: "short", netIds: [...nets], message: `different nets share copper (${node}): ${[...nets].map((id) => netLabel.get(id)).join(", ")}` });
   }
 
   // Design warnings (not fatal): spare pins and pointless one-pin nets.
@@ -139,7 +140,7 @@ export function analyze(project, library) {
   }
   for (const net of project.nets) {
     if (net.pins.size === 1) {
-      issues.push({ level: "warn", code: "single-pin-net", message: `net ${net.id} has only one pin` });
+      issues.push({ level: "warn", code: "single-pin-net", netId: net.id, message: `net ${netLabel.get(net.id)} has only one pin` });
     }
   }
 
@@ -174,7 +175,7 @@ export function analyze(project, library) {
       const a = compBox.get(refs[i]);
       const b = compBox.get(refs[j]);
       if (a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1) {
-        issues.push({ level: "error", code: "overlap", message: `components ${refs[i]} and ${refs[j]} overlap` });
+        issues.push({ level: "error", code: "overlap", refs: [refs[i], refs[j]], message: `components ${refs[i]} and ${refs[j]} overlap` });
       }
     }
   }

@@ -152,6 +152,16 @@ export class App {
       pill.textContent = issue.level;
       item.appendChild(pill);
       item.appendChild(document.createTextNode(" " + issue.message));
+      item.title = "click to highlight";
+      item.addEventListener("click", () => {
+        this.selected = null;
+        this.selectedWire = null;
+        if (issue.netId) this.selectedNet = issue.netId;
+        else if (issue.netIds?.length) this.selectedNet = issue.netIds[0];
+        else if (issue.ref) this.selected = issue.ref;
+        else if (issue.refs?.length) this.selected = issue.refs[0];
+        this.render();
+      });
       box.appendChild(item);
     }
   }

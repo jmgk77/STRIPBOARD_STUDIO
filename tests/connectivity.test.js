@@ -40,6 +40,15 @@ test("a net split across rows is open; a jumper closes it", () => {
   assert.equal(r.ok, true, JSON.stringify(r.issues));
 });
 
+test("issue messages use the net label and carry the net id", () => {
+  const p = base();
+  p.nets = [new Net("N1", [pinKey("J1", "1"), pinKey("J2", "1")], 1, "VCC")];
+  const open = analyze(p, LIBRARY).issues.find((i) => i.code === "net-open");
+  assert.ok(open);
+  assert.ok(open.message.includes("VCC"));
+  assert.equal(open.netId, "N1");
+});
+
 test("a pin sitting on a cut is an error", () => {
   const p = base();
   p.cuts = new Set([cellId(2, 2)]);

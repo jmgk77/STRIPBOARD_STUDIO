@@ -88,6 +88,7 @@ export function route(project, library, { maxAttempts = Infinity } = {}) {
 
 function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new Set(), fixedJumpers = []) {
   const { cols, rows } = project;
+  const netLabel = new Map(project.nets.map((n) => [n.id, n.label || n.id]));
   const owner = new Map(); // cell -> net id (copper)
   const arc = new Map(); // cell -> net id (jumper clearance)
   const jumperEnds = new Set();
@@ -294,7 +295,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
         }
       }
       if (bestIdx < 0) {
-        diagnostics.push({ level: "error", code: "unreachable", message: `net ${net}: cannot connect all its pins` });
+        diagnostics.push({ level: "error", code: "unreachable", netId: net, message: `net ${netLabel.get(net)}: cannot connect all its pins` });
         break;
       }
       const target = pending.splice(bestIdx, 1)[0];
@@ -339,6 +340,7 @@ function orderings(nets, pinsByNet) {
 
 function deriveCuts(project, owner, pinAt, diagnostics) {
   const { cols, rows } = project;
+  const netLabel = new Map(project.nets.map((n) => [n.id, n.label || n.id]));
   const cuts = new Set();
   for (let y = 1; y <= rows; y++) {
     const used = [];
@@ -367,7 +369,8 @@ function deriveCuts(project, owner, pinAt, diagnostics) {
         diagnostics.push({
           level: "error",
           code: "adjacent-nets",
-          message: `row ${y}: no room to cut between nets ${a.net} and ${b.net} (columns ${a.x}–${b.x})`,
+          netIds: [a.net, b.net],
+          message: `row ${y}: no room to cut between nets ${netLabel.get(a.net)} and ${netLabel.get(b.net)} (columns ${a.x}–${b.x})`,
         });
       } else {
         cuts.add(placed);
