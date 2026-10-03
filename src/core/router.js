@@ -7,7 +7,7 @@
 // each with the authoritative analyzer, and keeps the best one.
 
 import { analyze, cellId } from "./connectivity.js";
-import { componentPins, rowLabel } from "./geometry.js";
+import { componentBody, componentPins, rowLabel } from "./geometry.js";
 import { pinKey, Project } from "./model.js";
 
 const JUMPER_COST = 6; // prefer copper over a jumper
@@ -89,6 +89,21 @@ export function route(project, library, { maxAttempts = Infinity } = {}) {
 function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new Set(), fixedJumpers = []) {
   const { cols, rows } = project;
   const netLabel = new Map(project.nets.map((n) => [n.id, n.label || n.id]));
+
+  // Body keep-out: where a body is flush (`wiresUnder` false) no jumper arc or end may
+  // pass under it. Bodies that are elevated (discretes, modules on headers) do not block.
+  const bodyBlock = new Set();
+  for (const comp of project.components.values()) {
+    const part = library.get(comp.part);
+    if (!part || part.wiresUnder) continue;
+    const b = componentBody(comp, part);
+    if (!b) continue;
+    for (let y = Math.max(1, b.y0); y <= Math.min(rows, b.y1); y++) {
+      for (let x = Math.max(1, b.x0); x <= Math.min(cols, b.x1); x++) {
+        bodyBlock.add(cellId(x, y));
+      }
+    }
+  }
   const owner = new Map(); // cell -> net id (copper)
   const arc = new Map(); // cell -> net id (jumper clearance)
   const jumperEnds = new Set();
@@ -121,6 +136,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
     // A jumper ends in a HOLE, and a hole already takes a component lead: never share it,
     // not even with a pin of the same net. Connect through the strip in the adjacent cell.
     if (pinAt.has(c)) return false;
+    if (bodyBlock.has(c)) return false; // no soldering under a flush body
     if (!stripUsable(net, x, y)) return false;
     return !arc.has(c) && !jumperEnds.has(c);
   };
@@ -130,7 +146,7 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
     const out = [];
     for (let y = 1; y <= rows; y++) {
       const c = cellId(x, y);
-      if (pinAt.has(c) || arc.has(c) || jumperEnds.has(c)) out.push(y);
+      if (pinAt.has(c) || arc.has(c) || jumperEnds.has(c) || bodyBlock.has(c)) out.push(y);
     }
     return out;
   };

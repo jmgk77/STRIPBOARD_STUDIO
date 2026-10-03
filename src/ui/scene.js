@@ -179,8 +179,11 @@ export function render(svg, state) {
   for (let x = 1; x <= cols; x++) {
     el("text", { x: sx(x), y: PAD - CELL / 2 - 7, "text-anchor": "middle", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = String(x);
   }
+  // On the copper side the board is flipped, so the row letters move to the right edge.
+  const lettersRight = view === "copper";
+  const lettersX = lettersRight ? PAD - CELL / 2 + cols * CELL + 8 : PAD - CELL / 2 - 8;
   for (let y = 1; y <= rows; y++) {
-    el("text", { x: PAD - CELL / 2 - 8, y: sy(y) + 3, "text-anchor": "end", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = rowLabel(y, rows);
+    el("text", { x: lettersX, y: sy(y) + 3, "text-anchor": lettersRight ? "start" : "end", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = rowLabel(y, rows);
   }
 
   drawCutBorder(svg, state, sx, sy);

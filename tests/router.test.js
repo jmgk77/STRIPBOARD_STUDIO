@@ -22,6 +22,19 @@ test("router bridges two nets across rows with jumpers and cuts", () => {
   assert.equal(r.ok, true, JSON.stringify(r.issues));
 });
 
+test("a flush body's holes are a jumper keep-out", () => {
+  const p = new Project({ cols: 14, rows: 16 });
+  p.addComponent(new Component({ ref: "H1", part: "header4", x: 6, y: 5 })); // body col6 rows5-8, flush
+  p.addComponent(new Component({ ref: "R1", part: "resistor", x: 6, y: 1, span: 3 })); // (6,1),(6,4)
+  p.addComponent(new Component({ ref: "R2", part: "resistor", x: 6, y: 9, span: 3 })); // (6,9),(6,12)
+  p.nets = [new Net("A", [pinKey("R1", "2"), pinKey("R2", "1")])]; // (6,4) to (6,9)
+  const r = route(p, LIBRARY);
+  const inBody = (x, y) => x === 6 && y >= 5 && y <= 8;
+  for (const j of r.jumpers) {
+    for (let y = j.ya; y <= j.yb; y++) assert.ok(!inBody(j.x, y), `jumper under the header at ${j.x},${y}`);
+  }
+});
+
 test("router leaves two different nets on adjacent holes as a short (cannot be cut)", () => {
   const p = new Project({ cols: 12, rows: 6 });
   p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // (2,2)

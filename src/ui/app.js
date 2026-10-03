@@ -1239,6 +1239,6 @@ export class App {
 }
 
 function starterProject() {
-  // Match the toolbar defaults so the board size on screen equals the inputs.
-  return new Project({ cols: 34, rows: 26, title: "shield" });
+  // Match the toolbar defaults (A1..X55 board) so the drawn size equals the inputs.
+  return new Project({ cols: 55, rows: 24, title: "shield" });
 }

@@ -121,16 +121,16 @@ for (const half of [4, 7, 8]) {
 register(new PartDef({
   name: "module-2x15", label: "Module 2x15 (dev board)", kind: "module",
   pins: dualRow(labels("L", 15), labels("R", 15), 9),
-  body: { x: -1, y: -1, w: 12, h: 17 }, wiresUnder: false,
+  body: { x: -1, y: -1, w: 12, h: 17 }, wiresUnder: true,
 }));
 register(new PartDef({
   name: "module-2x10", label: "Module 2x10", kind: "module",
   pins: dualRow(labels("L", 10), labels("R", 10), 6),
-  body: { x: -1, y: -1, w: 9, h: 12 }, wiresUnder: false,
+  body: { x: -1, y: -1, w: 9, h: 12 }, wiresUnder: true,
 }));
 register(new PartDef({
   name: "module-1x8", label: "Module 1x8", kind: "module", pins: colPins(labels("P", 8)),
-  body: { x: -1, y: -1, w: 3, h: 10 }, wiresUnder: false,
+  body: { x: -1, y: -1, w: 3, h: 10 }, wiresUnder: true,
 }));
 
 // --- presets (common dev boards / breakout boards) ---------------------------
@@ -144,7 +144,7 @@ register(new PartDef({
     ["VIN", "GND2", "D23", "D22", "TX0", "RX0", "D21", "GND3", "D19", "D18", "D5", "TX2", "RX2", "D4", "D2"],
     9,
   ),
-  body: { x: -1, y: -1, w: 12, h: 17 }, wiresUnder: false,
+  body: { x: -1, y: -1, w: 12, h: 17 }, wiresUnder: true,
 }));
 register(new PartDef({
   name: "arduino-nano", label: "Arduino Nano", kind: "module",
@@ -153,7 +153,7 @@ register(new PartDef({
     ["D12", "D11", "D10", "D9", "D8", "D7", "D6", "D5", "D4", "D3", "D2", "GND2", "RST2", "RX0", "TX1"],
     6,
   ),
-  body: { x: -1, y: -1, w: 9, h: 17 }, wiresUnder: false,
+  body: { x: -1, y: -1, w: 9, h: 17 }, wiresUnder: true,
 }));
 // ULN2803 breakout module: a board around the pins (like the other modules), not a bare
 // DIP with pins sticking out of the body.
@@ -164,12 +164,12 @@ register(new PartDef({
     ["COM", "1C", "2C", "3C", "4C", "5C", "6C", "7C", "8C"],
     3,
   ),
-  body: { x: -1, y: -1, w: 6, h: 11 }, wiresUnder: false,
+  body: { x: -1, y: -1, w: 6, h: 11 }, wiresUnder: true,
 }));
 register(new PartDef({
   name: "pcf8574", label: "PCF8574 module", kind: "module",
   pins: dualRow(["VCC", "GND", "SDA", "SCL"], ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7"], 6),
-  body: { x: -1, y: -1, w: 9, h: 10 }, wiresUnder: false,
+  body: { x: -1, y: -1, w: 9, h: 10 }, wiresUnder: true,
 }));
 
 export function listParts() {
