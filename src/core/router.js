@@ -7,7 +7,7 @@
 // each with the authoritative analyzer, and keeps the best one.
 
 import { analyze, cellId } from "./connectivity.js";
-import { componentPins } from "./geometry.js";
+import { componentPins, rowLabel } from "./geometry.js";
 import { pinKey, Project } from "./model.js";
 
 const JUMPER_COST = 6; // prefer copper over a jumper
@@ -370,7 +370,7 @@ function deriveCuts(project, owner, pinAt, diagnostics) {
           level: "error",
           code: "adjacent-nets",
           netIds: [a.net, b.net],
-          message: `row ${y}: no room to cut between nets ${netLabel.get(a.net)} and ${netLabel.get(b.net)} (columns ${a.x}–${b.x})`,
+          message: `row ${rowLabel(y, rows)}: no room to cut between nets ${netLabel.get(a.net)} and ${netLabel.get(b.net)} (columns ${a.x}–${b.x})`,
         });
       } else {
         cuts.add(placed);

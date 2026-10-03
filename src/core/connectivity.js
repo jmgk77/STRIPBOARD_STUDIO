@@ -7,7 +7,7 @@
 // Everything else in the app (UI, router, DRC) must ask this module rather than re-deriving
 // connectivity elsewhere.
 
-import { componentBody, componentPins } from "./geometry.js";
+import { componentBody, componentPins, rowLabel } from "./geometry.js";
 import { pinKey } from "./model.js";
 
 export const cellId = (x, y) => `${x},${y}`;
@@ -46,6 +46,12 @@ class DSU {
 export function analyze(project, library) {
   const { cols, rows } = project;
   const netLabel = new Map(project.nets.map((n) => [n.id, n.label || n.id]));
+  // Board position as row letter + column number, e.g. C3.
+  const at = (x, y) => `${rowLabel(y, rows)}${x}`;
+  const atCell = (cell) => {
+    const [x, y] = cell.split(",").map(Number);
+    return at(x, y);
+  };
   const present = (x, y) => x >= 1 && x <= cols && y >= 1 && y <= rows && !project.cuts.has(cellId(x, y));
 
   const dsu = new DSU();
@@ -60,7 +66,7 @@ export function analyze(project, library) {
   for (const j of project.jumpers) {
     for (const [x, y] of [[j.x, j.ya], [j.x, j.yb]]) {
       if (!present(x, y)) {
-        issues.push({ level: "error", code: "jumper-off-copper", message: `jumper end (${x},${y}) is off the board or on a cut` });
+        issues.push({ level: "error", code: "jumper-off-copper", message: `jumper end ${at(x, y)} is off the board or on a cut` });
       }
     }
     if (present(j.x, j.ya) && present(j.x, j.yb)) dsu.union(cellId(j.x, j.ya), cellId(j.x, j.yb));
@@ -92,11 +98,11 @@ export function analyze(project, library) {
       const key = pinKey(comp.ref, p.id);
       pinPos.set(key, { x: p.x, y: p.y });
       if (p.x < 1 || p.x > cols || p.y < 1 || p.y > rows) {
-        issues.push({ level: "error", code: "pin-off-board", ref: comp.ref, pin: p.id, message: `${key} is off the board at (${p.x},${p.y})` });
+        issues.push({ level: "error", code: "pin-off-board", ref: comp.ref, pin: p.id, message: `${key} is off the board at ${at(p.x, p.y)}` });
         continue;
       }
       if (project.cuts.has(cellId(p.x, p.y))) {
-        issues.push({ level: "error", code: "pin-on-cut", ref: comp.ref, pin: p.id, message: `${key} sits on a cut at (${p.x},${p.y})` });
+        issues.push({ level: "error", code: "pin-on-cut", ref: comp.ref, pin: p.id, message: `${key} sits on a cut at ${at(p.x, p.y)}` });
       }
       pinNode.set(key, dsu.find(cellId(p.x, p.y)));
     }
@@ -123,7 +129,7 @@ export function analyze(project, library) {
 
   const shorts = [];
   for (const [node, nets] of regionNets) {
-    if (nets.size > 1) shorts.push({ level: "error", code: "short", netIds: [...nets], message: `different nets share copper (${node}): ${[...nets].map((id) => netLabel.get(id)).join(", ")}` });
+    if (nets.size > 1) shorts.push({ level: "error", code: "short", netIds: [...nets], message: `different nets share copper at ${atCell(node)}: ${[...nets].map((id) => netLabel.get(id)).join(", ")}` });
   }
 
   // Design warnings (not fatal): spare pins and pointless one-pin nets.
@@ -161,11 +167,11 @@ export function analyze(project, library) {
     const ends = items.filter((i) => i.kind === "jumper" && i.end);
     const arcs = items.filter((i) => i.kind === "jumper" && i.arc);
     const pins = items.filter((i) => i.kind === "pin");
-    if (ends.length > 1) issues.push({ level: "error", code: "jumper-collision", message: `two jumpers share the hole at ${cell}` });
-    if (ends.length && pins.length) issues.push({ level: "error", code: "jumper-on-pin", message: `a jumper end lands on a pin at ${cell}` });
-    if (arcs.length && pins.length) issues.push({ level: "error", code: "jumper-over-pin", message: `a jumper arcs through a pin at ${cell}` });
-    if (arcs.length && ends.length) issues.push({ level: "error", code: "jumper-overlap", message: `a jumper overlaps another jumper at ${cell}` });
-    if (pins.length > 1) issues.push({ level: "error", code: "pin-collision", message: `two pins share the hole at ${cell}` });
+    if (ends.length > 1) issues.push({ level: "error", code: "jumper-collision", message: `two jumpers share the hole at ${atCell(cell)}` });
+    if (ends.length && pins.length) issues.push({ level: "error", code: "jumper-on-pin", message: `a jumper end lands on a pin at ${atCell(cell)}` });
+    if (arcs.length && pins.length) issues.push({ level: "error", code: "jumper-over-pin", message: `a jumper arcs through a pin at ${atCell(cell)}` });
+    if (arcs.length && ends.length) issues.push({ level: "error", code: "jumper-overlap", message: `a jumper overlaps another jumper at ${atCell(cell)}` });
+    if (pins.length > 1) issues.push({ level: "error", code: "pin-collision", message: `two pins share the hole at ${atCell(cell)}` });
   }
 
   // Two components whose pin areas overlap would physically collide.

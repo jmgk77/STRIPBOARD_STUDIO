@@ -65,6 +65,14 @@ test("overlapping components are flagged", () => {
   assert.ok(r.issues.some((i) => i.code === "overlap"));
 });
 
+test("problem messages give positions as letter+number", () => {
+  const p = base(); // 12x10; J1.1 is at (2,2) -> row I, column 2
+  p.cuts = new Set([cellId(2, 2)]);
+  const onCut = analyze(p, LIBRARY).issues.find((i) => i.code === "pin-on-cut");
+  assert.ok(onCut);
+  assert.ok(onCut.message.includes("I2"), onCut.message);
+});
+
 test("two jumpers sharing a hole is an error", () => {
   const p = base();
   p.jumpers = [
