@@ -95,9 +95,11 @@ for (let n = 2; n <= 8; n++) {
     name: `header${n}`, label: `${n}-pin header`, kind: "header", pins: colPins(numbers(n)),
   }));
 }
+// Screw terminals: classic 5.08 mm pitch = 2 holes between pins.
 for (let n = 2; n <= 4; n++) {
   register(new PartDef({
-    name: `terminal${n}`, label: `${n}-way terminal`, kind: "terminal", pins: colPins(numbers(n)),
+    name: `terminal${n}`, label: `Screw terminal (${n}-way)`, kind: "terminal",
+    pins: Array.from({ length: n }, (_, i) => ({ id: String(i + 1), x: 0, y: i * 2 })),
   }));
 }
 for (const half of [4, 7, 8]) {

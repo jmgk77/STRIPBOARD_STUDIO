@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildBarPart } from "../src/core/library.js";
+import { buildBarPart, LIBRARY } from "../src/core/library.js";
 import { Project } from "../src/core/model.js";
 
 test("single-row pin bar has one column of pins", () => {
@@ -18,6 +18,11 @@ test("double-row pin bar uses the configured gap in holes", () => {
     part.pins.map((p) => [p.id, p.x, p.y]),
     [["L1", 0, 0], ["L2", 0, 1], ["L3", 0, 2], ["R1", 5, 0], ["R2", 5, 1], ["R3", 5, 2]],
   );
+});
+
+test("screw terminal pins are 2 holes apart (5.08 mm)", () => {
+  const part = LIBRARY.get("terminal2");
+  assert.deepEqual(part.pins.map((p) => [p.id, p.x, p.y]), [["1", 0, 0], ["2", 0, 2]]);
 });
 
 test("custom part specs survive a project JSON round-trip", () => {

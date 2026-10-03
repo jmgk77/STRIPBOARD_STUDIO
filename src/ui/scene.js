@@ -326,6 +326,13 @@ function drawGlyph(g, part, pts) {
     el("line", { x1: b.X, y1: b.Y, x2: cx, y2: cy, ...stroke }, g);
     return;
   }
+  if (kind === "terminal") {
+    for (const p of pts) {
+      el("circle", { cx: p.X, cy: p.Y, r: 7, fill: "#d9d7cb", stroke: "#202020", "stroke-width": 1.4 }, g);
+      el("line", { x1: p.X - 4.5, y1: p.Y - 4.5, x2: p.X + 4.5, y2: p.Y + 4.5, stroke: "#202020", "stroke-width": 1.6 }, g);
+    }
+    return;
+  }
   if (kind === "dip" || kind === "module") {
     const p1 = pts.find((p) => p.id === "1" || p.id === "L1");
     if (p1) el("circle", { cx: p1.X, cy: p1.Y, r: 3, fill: "#202020" }, g);
