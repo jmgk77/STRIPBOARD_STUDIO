@@ -86,7 +86,9 @@ function freeUnits(project) {
       if (taken.has(c.group)) continue;
       taken.add(c.group);
       const members = groups.get(c.group);
-      if (members.every((m) => !m.locked)) units.push({ members, group: c.group });
+      if (!members.every((m) => !m.locked)) continue; // any lock -> whole group fixed
+      // A lone member is not a rigid cluster: treat it as a normal part (can rotate).
+      units.push(members.length > 1 ? { members, group: c.group } : { members, group: null });
     } else if (!c.locked) {
       units.push({ members: [c], group: null });
     }

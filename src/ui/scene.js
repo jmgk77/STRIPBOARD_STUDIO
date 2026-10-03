@@ -196,6 +196,7 @@ export function render(svg, state) {
       if (!part) continue;
       drawComponent(svg, comp, part, state, sx, sy, colors);
     }
+    drawGroupBox(svg, state, sx, sy); // outline the selected group's cluster
   }
 
   // cuts on top (clickable/draggable)
@@ -309,6 +310,43 @@ function drawRatsnest(svg, state, sx, sy, colors) {
       }, svg).textContent = net.label || net.id;
     }
   }
+}
+
+// Dashed outline + label around the cluster of the currently selected group (if any).
+function drawGroupBox(svg, state, sx, sy) {
+  const group = state.selectedGroup;
+  if (!group) return;
+  const members = [...state.project.components.values()].filter((c) => c.group === group);
+  if (members.length < 2) return;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  const hit = (x, y) => {
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  };
+  for (const m of members) {
+    const part = state.library.get(m.part);
+    if (!part) continue;
+    const b = componentBody(m, part);
+    if (b) {
+      hit(b.x0, b.y0);
+      hit(b.x1, b.y1);
+    } else {
+      for (const p of componentPins(m, part)) hit(p.x, p.y);
+    }
+  }
+  if (x0 === Infinity) return;
+  const color = state.mono ? "#000000" : "#b06ad0";
+  const X0 = Math.min(sx(x0), sx(x1)) - CELL * 0.7;
+  const X1 = Math.max(sx(x0), sx(x1)) + CELL * 0.7;
+  const Y0 = Math.min(sy(y0), sy(y1)) - CELL * 0.7;
+  const Y1 = Math.max(sy(y0), sy(y1)) + CELL * 0.7;
+  el("rect", { x: X0, y: Y0, width: X1 - X0, height: Y1 - Y0, rx: 8, fill: "none", stroke: color, "stroke-width": 2, "stroke-dasharray": "8 5", "pointer-events": "none" }, svg);
+  el("text", { x: X0 + 3, y: Y0 - 4, "font-size": 10, fill: color, "pointer-events": "none" }, svg).textContent = `group: ${group}`;
 }
 
 function drawComponent(svg, comp, part, state, sx, sy, colors) {
