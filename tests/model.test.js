@@ -88,6 +88,7 @@ test("JSON round-trips", () => {
   p.removedJumpers = new Set(["2,3,7"]);
   p.mountingHoles = new Set(["1,1"]);
   p.mountDiameter = 3.2;
+  p.components.get("J1").group = "pumps";
   const q = Project.fromJSON(p.toJSON());
   assert.deepEqual(q.toJSON(), p.toJSON());
 });

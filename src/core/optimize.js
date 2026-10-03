@@ -43,11 +43,61 @@ function pinsBounds(comps, library) {
   return x0 === Infinity ? null : { x0, y0, x1, y1 };
 }
 
+// Average pin position of a set of components (used to steer a part/unit toward the rest).
+function pinsCentroid(comps, library) {
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (const c of comps) {
+    const p = library.get(c.part);
+    if (!p) continue;
+    for (const q of componentPins(c, p)) {
+      sx += q.x;
+      sy += q.y;
+      n += 1;
+    }
+  }
+  return n ? { x: sx / n, y: sy / n } : null;
+}
+
+function unitCentroid(members) {
+  const n = members.length;
+  return {
+    x: members.reduce((s, m) => s + m.x, 0) / n,
+    y: members.reduce((s, m) => s + m.y, 0) / n,
+  };
+}
+
+// A "unit" is one movable thing: a single unlocked part, or a whole group (rigid cluster).
+// A group only participates when every member is unlocked (all-or-nothing, D8); otherwise
+// it is a fixed anchor, like a locked part.
+function freeUnits(project) {
+  const comps = [...project.components.values()];
+  const groups = new Map();
+  for (const c of comps) {
+    if (!c.group) continue;
+    if (!groups.has(c.group)) groups.set(c.group, []);
+    groups.get(c.group).push(c);
+  }
+  const units = [];
+  const taken = new Set();
+  for (const c of comps) {
+    if (c.group) {
+      if (taken.has(c.group)) continue;
+      taken.add(c.group);
+      const members = groups.get(c.group);
+      if (members.every((m) => !m.locked)) units.push({ members, group: c.group });
+    } else if (!c.locked) {
+      units.push({ members: [c], group: null });
+    }
+  }
+  return units;
+}
+
 // Direct shifts that slam the free cluster against the fixed parts (or the board corner).
-function targetShifts(project, free, library) {
+function targetShifts(free, fixed, library) {
   const fb = pinsBounds(free, library);
   if (!fb) return [];
-  const fixed = [...project.components.values()].filter((c) => c.locked);
   const out = [];
   if (!fixed.length) {
     out.push({ dx: 1 - fb.x0, dy: 1 - fb.y0 });
@@ -118,7 +168,10 @@ export function optimize(
   const weights = { ...DEFAULT_WEIGHTS, ...overrides };
   const cache = new Map();
   let evaluations = 0;
-  const free = [...project.components.values()].filter((c) => !c.locked);
+  const units = freeUnits(project);
+  const free = units.flatMap((u) => u.members);
+  const freeSet = new Set(free);
+  const fixed = [...project.components.values()].filter((c) => !freeSet.has(c));
   let best = evaluate(project, library, cache, weights);
   evaluations += 1;
   const startScore = best.score;
@@ -133,7 +186,7 @@ export function optimize(
       let bestShift = null;
       let bestVal = best;
       const seen = new Set();
-      for (const { dx, dy } of targetShifts(project, free, library)) {
+      for (const { dx, dy } of targetShifts(free, fixed, library)) {
         if (!dx && !dy) continue;
         const key = `${dx},${dy}`;
         if (seen.has(key)) continue;
@@ -163,38 +216,47 @@ export function optimize(
       improved = true;
     }
 
-    // 2. refine each free part on its own
-    for (const comp of free) {
+    // 2. refine each free unit: a lone part rotates/moves/bends; a group only translates.
+    for (const unit of units) {
       if (evaluations >= maxEvaluations) break;
-      const part = library.get(comp.part);
-      const base = { x: comp.x, y: comp.y, rot: comp.rot, span: comp.span };
+      const members = unit.members;
+      const bases = members.map((m) => ({ x: m.x, y: m.y, rot: m.rot, span: m.span }));
+      // Candidates are transforms: absolute fields for a singleton, dx/dy for a rigid group.
+      const apply = (cand) =>
+        members.forEach((m, i) => {
+          const b = bases[i];
+          m.x = (cand.x ?? b.x) + (cand.dx ?? 0);
+          m.y = (cand.y ?? b.y) + (cand.dy ?? 0);
+          m.rot = cand.rot ?? b.rot;
+          m.span = cand.span ?? b.span;
+        });
       const candidates = [];
-      for (const rot of ROTS) if (rot !== base.rot) candidates.push({ ...base, rot });
-      for (const d of perPartOffsets) {
-        candidates.push({ ...base, x: base.x + d }, { ...base, x: base.x - d });
-        candidates.push({ ...base, y: base.y + d }, { ...base, y: base.y - d });
-      }
-      const others = free.filter((c) => c !== comp);
-      if (others.length) {
-        let sx = 0;
-        let sy = 0;
-        let n = 0;
-        for (const other of others) {
-          const op = library.get(other.part);
-          if (!op) continue;
-          for (const q of componentPins(other, op)) {
-            sx += q.x;
-            sy += q.y;
-            n += 1;
-          }
+      if (unit.group) {
+        for (const d of perPartOffsets) {
+          candidates.push({ dx: d }, { dx: -d }, { dy: d }, { dy: -d });
         }
-        if (n) candidates.push({ ...base, x: Math.round(sx / n) }, { ...base, y: Math.round(sy / n) });
-      }
-      if (part?.bendable) {
-        const { min, max, default: def } = part.bendable;
-        for (const s of new Set([min, def, base.span - 1, base.span + 1, max])) {
-          const clamped = Math.max(min, Math.min(max, s));
-          if (clamped !== base.span) candidates.push({ ...base, span: clamped });
+        const others = free.filter((c) => !members.includes(c));
+        if (others.length) {
+          const c = unitCentroid(members);
+          const o = pinsCentroid(others, library);
+          if (o) candidates.push({ dx: Math.round(o.x - c.x), dy: Math.round(o.y - c.y) });
+        }
+      } else {
+        const comp = members[0];
+        const base = bases[0];
+        const part = library.get(comp.part);
+        for (const rot of ROTS) if (rot !== base.rot) candidates.push({ rot });
+        for (const d of perPartOffsets) {
+          candidates.push({ x: base.x + d }, { x: base.x - d }, { y: base.y + d }, { y: base.y - d });
+        }
+        const o = pinsCentroid(free.filter((c) => c !== comp), library);
+        if (o) candidates.push({ x: Math.round(o.x) }, { y: Math.round(o.y) });
+        if (part?.bendable) {
+          const { min, max, default: def } = part.bendable;
+          for (const s of new Set([min, def, base.span - 1, base.span + 1, max])) {
+            const clamped = Math.max(min, Math.min(max, s));
+            if (clamped !== base.span) candidates.push({ span: clamped });
+          }
         }
       }
 
@@ -202,10 +264,7 @@ export function optimize(
       let bestVal = best;
       for (const cand of candidates) {
         if (evaluations >= maxEvaluations) break;
-        comp.x = cand.x;
-        comp.y = cand.y;
-        comp.rot = cand.rot;
-        comp.span = cand.span;
+        apply(cand);
         const val = evaluate(project, library, cache, weights);
         evaluations += 1;
         if (val.score < bestVal.score) {
@@ -213,18 +272,10 @@ export function optimize(
           bestMove = cand;
         }
       }
+      apply(bestMove ?? {}); // apply the winner, or restore the bases
       if (bestMove) {
-        comp.x = bestMove.x;
-        comp.y = bestMove.y;
-        comp.rot = bestMove.rot;
-        comp.span = bestMove.span;
         best = bestVal;
         improved = true;
-      } else {
-        comp.x = base.x;
-        comp.y = base.y;
-        comp.rot = base.rot;
-        comp.span = base.span;
       }
     }
     if (!improved) break;

@@ -57,6 +57,36 @@ test("three presets exist; easy favours fewer jumpers than balanced", () => {
   assert.ok(jumpers(easy) <= jumpers(bal), `easy ${jumpers(easy)} vs balanced ${jumpers(bal)}`);
 });
 
+test("a group moves as a rigid cluster (relative offsets preserved)", () => {
+  const p = new Project({ cols: 26, rows: 14 });
+  // Two terminals in one group; a locked anchor elsewhere to pull them toward.
+  p.addComponent(new Component({ ref: "T1", part: "header2", x: 2, y: 2, group: "pumps" }));
+  p.addComponent(new Component({ ref: "T2", part: "header2", x: 9, y: 2, group: "pumps" }));
+  p.addComponent(new Component({ ref: "A1", part: "header4", x: 20, y: 8, locked: true }));
+  p.nets = [
+    new Net("A", [pinKey("T1", "1"), pinKey("A1", "1")]),
+    new Net("B", [pinKey("T2", "1"), pinKey("A1", "2")]),
+  ];
+  const offsets = () => ({
+    dx: p.components.get("T2").x - p.components.get("T1").x,
+    dy: p.components.get("T2").y - p.components.get("T1").y,
+  });
+  const before = offsets();
+  optimize(p, LIBRARY, { maxPasses: 4, maxEvaluations: 200 });
+  assert.deepEqual(offsets(), before, "group members must keep their relative offsets");
+});
+
+test("a group with a locked member is a fixed anchor", () => {
+  const p = new Project({ cols: 26, rows: 14 });
+  p.addComponent(new Component({ ref: "T1", part: "header2", x: 2, y: 2, group: "g", locked: true }));
+  p.addComponent(new Component({ ref: "T2", part: "header2", x: 9, y: 2, group: "g" })); // unlocked, but grouped with a locked part
+  p.addComponent(new Component({ ref: "A1", part: "header4", x: 20, y: 8 }));
+  p.nets = [new Net("A", [pinKey("T2", "1"), pinKey("A1", "1")])];
+  optimize(p, LIBRARY, { maxPasses: 4, maxEvaluations: 200 });
+  assert.deepEqual([p.components.get("T1").x, p.components.get("T1").y], [2, 2]);
+  assert.deepEqual([p.components.get("T2").x, p.components.get("T2").y], [9, 2], "all-or-nothing lock");
+});
+
 test("optimizer never moves a locked part", () => {
   const p = new Project({ cols: 12, rows: 12 });
   p.addComponent(new Component({ ref: "J1", part: "header4", x: 2, y: 2, locked: true }));

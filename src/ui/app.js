@@ -119,6 +119,7 @@ export class App {
       library: LIBRARY,
       view: this.view,
       selected: this.selected,
+      selectedGroup: (this.selected && project.components.get(this.selected)?.group) || null,
       pending: this.pending,
       jumperStart: this.jumperStart,
       mode: this.mode,
@@ -563,6 +564,32 @@ export class App {
     valueRow.appendChild(valueTag);
     valueRow.appendChild(valueInput);
     box.appendChild(valueRow);
+
+    // group: parts sharing a name stay rigidly together (semi-locked); the group can still
+    // be moved as a whole. Empty = ungrouped.
+    const groupRow = document.createElement("div");
+    groupRow.className = "pinrow";
+    const groupTag = document.createElement("span");
+    groupTag.className = "pintag";
+    groupTag.textContent = "group";
+    const groupInput = document.createElement("input");
+    groupInput.type = "text";
+    groupInput.value = comp.group || "";
+    groupInput.placeholder = "(ungrouped)";
+    groupInput.title = "parts with the same group name stay rigidly together";
+    groupInput.disabled = !ed;
+    groupInput.addEventListener("focus", () => {
+      this._editBefore = JSON.stringify(this.project.toJSON());
+    });
+    groupInput.addEventListener("change", () => {
+      if (this._editBefore) this.pushHistory(this._editBefore);
+      this._editBefore = null;
+      comp.group = groupInput.value.trim();
+      this._afterStructuralChange(false); // grouping does not invalidate the routing
+    });
+    groupRow.appendChild(groupTag);
+    groupRow.appendChild(groupInput);
+    box.appendChild(groupRow);
 
     if (part?.bendable) {
       const row = document.createElement("div");
@@ -1048,6 +1075,11 @@ export class App {
       }
     }
     return null;
+  }
+
+  /** Every component sharing a group name (empty name -> just that component). */
+  _groupMembers(name) {
+    return [...this.project.components.values()].filter((c) => c.group === name);
   }
 
   /** Cell under the pointer, or null when the click lands off the board. */
@@ -1905,11 +1937,18 @@ export class App {
         this.render();
         return;
       }
+      // A grouped part drags its whole group rigidly; a group with any locked member is fixed.
+      const mates = comp.group ? this._groupMembers(comp.group) : [comp];
+      if (comp.group && mates.some((m) => m.locked)) {
+        this._status(`group "${comp.group}" has a locked part — unlock all to move the group`);
+        if (already) this.selected = null;
+        this.render();
+        return;
+      }
       this.drag = {
         ref,
         start: this._cellAt(evt),
-        originX: comp.x,
-        originY: comp.y,
+        members: mates.map((m) => ({ comp: m, ox: m.x, oy: m.y })),
         before: JSON.stringify(this.project.toJSON()),
         moved: false,
         wasSelected: already,
@@ -1976,14 +2015,27 @@ export class App {
       }
       if (!this.drag) return;
       const cell = this._cellAt(evt);
-      const comp = this.project.components.get(this.drag.ref);
-      const dx = cell.x - this.drag.start.x;
-      const dy = cell.y - this.drag.start.y;
-      const nx = Math.max(1, Math.min(this.project.cols, this.drag.originX + dx));
-      const ny = Math.max(1, Math.min(this.project.rows, this.drag.originY + dy));
-      if (nx !== comp.x || ny !== comp.y) this.drag.moved = true;
-      comp.x = nx;
-      comp.y = ny;
+      // Clamp one rigid delta so every member of the (possibly grouped) drag stays on board.
+      const { cols, rows } = this.project;
+      let minDx = -Infinity;
+      let maxDx = Infinity;
+      let minDy = -Infinity;
+      let maxDy = Infinity;
+      for (const m of this.drag.members) {
+        minDx = Math.max(minDx, 1 - m.ox);
+        maxDx = Math.min(maxDx, cols - m.ox);
+        minDy = Math.max(minDy, 1 - m.oy);
+        maxDy = Math.min(maxDy, rows - m.oy);
+      }
+      const dx = Math.max(minDx, Math.min(maxDx, cell.x - this.drag.start.x));
+      const dy = Math.max(minDy, Math.min(maxDy, cell.y - this.drag.start.y));
+      for (const m of this.drag.members) {
+        const nx = m.ox + dx;
+        const ny = m.oy + dy;
+        if (nx !== m.comp.x || ny !== m.comp.y) this.drag.moved = true;
+        m.comp.x = nx;
+        m.comp.y = ny;
+      }
       this.render();
     });
 
@@ -2029,8 +2081,7 @@ export class App {
         return;
       }
       if (!this.drag) return;
-      const { ref, before, originX, originY, moved, wasSelected } = this.drag;
-      const comp = this.project.components.get(ref);
+      const { before, moved, wasSelected } = this.drag;
       this.drag = null;
       if (!moved) {
         // a plain click: toggle the selection back off if it was already selected
@@ -2040,7 +2091,7 @@ export class App {
         }
         return;
       }
-      if (comp.x !== originX || comp.y !== originY) this.pushHistory(before);
+      this.pushHistory(before);
       this._afterStructuralChange();
     });
   }

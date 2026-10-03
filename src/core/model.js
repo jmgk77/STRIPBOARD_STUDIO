@@ -33,7 +33,7 @@ export class Net {
 }
 
 export class Component {
-  constructor({ ref, part, x = 1, y = 1, rot = 0, locked = false, value = "", pinNames = null, span = 0 }) {
+  constructor({ ref, part, x = 1, y = 1, rot = 0, locked = false, value = "", pinNames = null, span = 0, group = "" }) {
     this.ref = ref;
     this.part = part;
     this.x = x;
@@ -43,13 +43,15 @@ export class Component {
     this.value = value;
     this.pinNames = pinNames ? { ...pinNames } : {}; // pin id -> display name
     this.span = span; // bendable parts: lead spacing in holes (0 = part default)
+    this.group = group; // semi-locked cluster name: same name = rigid relative to each other
   }
 
   toJSON() {
-    const { ref, part, x, y, rot, locked, value, pinNames, span } = this;
+    const { ref, part, x, y, rot, locked, value, pinNames, span, group } = this;
     const out = { ref, part, x, y, rot, locked, value };
     if (Object.keys(pinNames).length) out.pinNames = pinNames;
     if (span) out.span = span;
+    if (group) out.group = group;
     return out;
   }
 }

@@ -322,7 +322,7 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
   const wiredEdge = mono ? "#000000" : "#2a9d5f";
   const textColor = mono ? "#000000" : "#101010";
   const pinColor = mono ? "#000000" : "#202020";
-  const isSel = selected === comp.ref;
+  const isSel = selected === comp.ref || (state.selectedGroup != null && comp.group === state.selectedGroup);
   const wired = part.pins.some((p) => project.netOf(`${comp.ref}.${p.id}`));
   const pts = componentPins(comp, part).map((p) => ({ id: p.id, X: sx(p.x), Y: sy(p.y), cx: p.x, cy: p.y }));
   const body = componentBody(comp, part);
