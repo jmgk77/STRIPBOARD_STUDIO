@@ -158,6 +158,7 @@ dialog pre {
 }
 .pinrow input {
   flex: 1;
+  min-width: 0;
   background: var(--panel2);
   color: var(--text);
   border: 1px solid var(--line);
@@ -166,3 +167,31 @@ dialog pre {
   font: inherit;
   font-size: 12px;
 }
+.netbadge {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #2b3542;
+  color: var(--accent);
+  border: 1px solid var(--line);
+}
+.minibtn {
+  flex: none;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.nethead { display: flex; align-items: center; gap: 6px; }
+.netname {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+.netpins { font-size: 11px; margin-top: 3px; word-break: break-word; }

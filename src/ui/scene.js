@@ -200,6 +200,12 @@ function drawRatsnest(svg, state, sx, sy, colors) {
         opacity: sel ? 1 : dim ? 0.16 : 0.7,
       }, svg);
     }
+    if (sel) {
+      el("text", {
+        x: pts[0].x + 8, y: pts[0].y - 8, fill: colors.get(net.id),
+        "font-size": 11, "font-weight": 700, stroke: "#fff", "stroke-width": 2.5, "paint-order": "stroke",
+      }, svg).textContent = net.label || net.id;
+    }
   }
 }
 
@@ -223,14 +229,14 @@ function drawComponent(svg, comp, part, state, sx, sy) {
 
   drawGlyph(g, part, pts);
 
-  // pins
+  // pins: visible dot (no events) ...
   for (const p of pts) {
     const isPending = pending && pending === `${comp.ref}.${p.id}`;
     el("circle", {
-      "data-ref": comp.ref, "data-pin": p.id,
-      cx: p.X, cy: p.Y, r: isPending ? 6 : 4.5,
-      fill: "#202020",
+      cx: p.X, cy: p.Y, r: isPending ? 6.5 : 4.5,
+      fill: isPending ? "#ffcc33" : "#202020",
       stroke: isPending ? "#ffaa00" : "#202020", "stroke-width": isPending ? 2.5 : 1,
+      "pointer-events": "none",
     }, g);
   }
 
@@ -244,7 +250,12 @@ function drawComponent(svg, comp, part, state, sx, sy) {
 
   // label
   const label = `${comp.ref}${comp.value ? ` ${comp.value}` : ""}${comp.locked ? " *" : ""}`;
-  el("text", { x: (bx0 + bx1) / 2, y: by0 - 4, "text-anchor": "middle", "font-size": 10, fill: "#101010" }, g).textContent = label;
+  el("text", { x: (bx0 + bx1) / 2, y: by0 - 4, "text-anchor": "middle", "font-size": 10, fill: "#101010", "pointer-events": "none" }, g).textContent = label;
+
+  // ... and a big invisible hit target on top, so pins are easy to click (and highlight)
+  for (const p of pts) {
+    el("circle", { "data-ref": comp.ref, "data-pin": p.id, cx: p.X, cy: p.Y, r: 11, fill: "transparent" }, g);
+  }
 }
 
 function drawGlyph(g, part, pts) {

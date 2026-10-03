@@ -38,6 +38,14 @@ test("pinLabel prefers the instance pin name", () => {
   assert.equal(pinLabel(p, "U1.L2"), "U1.L2");
 });
 
+test("net labels survive a JSON round-trip", () => {
+  const p = new Project();
+  p.nets = [new Net("N1", ["J1.1"], 1, "VCC")];
+  const q = Project.fromJSON(p.toJSON());
+  assert.equal(q.nets[0].label, "VCC");
+  assert.deepEqual(q.toJSON(), p.toJSON());
+});
+
 test("pin names survive a JSON round-trip", () => {
   const p = new Project();
   p.addComponent(new Component({ ref: "U1", part: "module-2x10", pinNames: { L1: "GPIO4" } }));

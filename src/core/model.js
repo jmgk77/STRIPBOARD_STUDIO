@@ -18,14 +18,17 @@ export function pinLabel(project, key) {
 }
 
 export class Net {
-  constructor(id, pins = [], weight = 1) {
+  constructor(id, pins = [], weight = 1, label = "") {
     this.id = id;
     this.pins = new Set(pins);
     this.weight = weight;
+    this.label = label; // friendly name, e.g. "VCC", "bomba1"
   }
 
   toJSON() {
-    return { id: this.id, pins: [...this.pins].sort(), weight: this.weight };
+    const out = { id: this.id, pins: [...this.pins].sort(), weight: this.weight };
+    if (this.label) out.label = this.label;
+    return out;
   }
 }
 
@@ -132,7 +135,7 @@ export class Project {
     const board = o.board ?? {};
     const p = new Project({ cols: board.cols ?? board.w ?? 34, rows: board.rows ?? board.h ?? 26, title: o.title ?? "untitled" });
     for (const c of o.components ?? []) p.components.set(c.ref, new Component(c));
-    p.nets = (o.nets ?? []).map((n) => new Net(n.id, n.pins ?? [], n.weight ?? 1));
+    p.nets = (o.nets ?? []).map((n) => new Net(n.id, n.pins ?? [], n.weight ?? 1, n.label ?? ""));
     p.cuts = new Set(o.cuts ?? []);
     p.fixedCuts = new Set(o.fixedCuts ?? []);
     p.jumpers = (o.jumpers ?? []).map((j) => {

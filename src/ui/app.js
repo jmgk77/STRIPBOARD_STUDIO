@@ -1,7 +1,7 @@
 // Application state and interactions. Renders through ui/scene.js and mutates the model
 // in core/. Undo/redo is whole-project snapshots taken before each change.
 
-import { Component, Project, pinLabel } from "../core/model.js";
+import { Component, Project, pinLabel, pinKey } from "../core/model.js";
 import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } from "../core/library.js";
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
@@ -25,6 +25,7 @@ export class App {
     this.selectedNet = null;
     this.selectedWire = null;
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true };
+    this._editBefore = null;
     this.issues = [];
     this.history = [];
     this.redoStack = [];
@@ -80,15 +81,52 @@ export class App {
       return;
     }
     for (const net of this.project.nets) {
-      const item = document.createElement("div");
-      item.className = "item" + (this.selectedNet === net.id ? " active" : "");
-      const pins = [...net.pins].sort().map((k) => pinLabel(this.project, k)).join(", ");
-      item.textContent = `${net.id} (${net.pins.size}): ${pins}`;
-      item.addEventListener("click", () => {
+      const row = document.createElement("div");
+      row.className = "item" + (this.selectedNet === net.id ? " active" : "");
+
+      const head = document.createElement("div");
+      head.className = "nethead";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "netname";
+      input.placeholder = net.id;
+      input.value = net.label || "";
+      input.addEventListener("focus", () => {
+        this._editBefore = JSON.stringify(this.project.toJSON());
+      });
+      input.addEventListener("input", () => {
+        net.label = input.value.trim();
+        this.scene.set_project(this.project);
+      });
+      input.addEventListener("change", () => {
+        if (this._editBefore) this.pushHistory(this._editBefore);
+        this._editBefore = null;
+        this.render();
+      });
+      const del = document.createElement("button");
+      del.className = "minibtn";
+      del.textContent = "✕";
+      del.title = "delete this net";
+      del.addEventListener("click", () => {
+        this.snapshot();
+        this.project.nets = this.project.nets.filter((n) => n !== net);
+        if (this.selectedNet === net.id) this.selectedNet = null;
+        this._afterStructuralChange(false);
+      });
+      head.appendChild(input);
+      head.appendChild(del);
+      row.appendChild(head);
+
+      const pins = document.createElement("div");
+      pins.className = "netpins muted";
+      pins.textContent = `${net.pins.size}: ${[...net.pins].sort().map((k) => pinLabel(this.project, k)).join(", ")}`;
+      row.appendChild(pins);
+      row.addEventListener("click", (e) => {
+        if (e.target.tagName === "INPUT" || e.target.tagName === "BUTTON") return;
         this.selectedNet = this.selectedNet === net.id ? null : net.id;
         this.render();
       });
-      box.appendChild(item);
+      box.appendChild(row);
     }
   }
 
@@ -164,15 +202,41 @@ export class App {
       input.type = "text";
       input.placeholder = pin.id;
       input.value = comp.pinNames?.[pin.id] ?? "";
-      input.addEventListener("change", () => {
-        this.snapshot();
+      input.addEventListener("focus", () => {
+        this._editBefore = JSON.stringify(this.project.toJSON());
+      });
+      input.addEventListener("input", () => {
         const value = input.value.trim();
         if (value) comp.pinNames[pin.id] = value;
         else delete comp.pinNames[pin.id];
+        this.scene.set_project(this.project); // update board labels, keep focus here
+      });
+      input.addEventListener("change", () => {
+        if (this._editBefore) this.pushHistory(this._editBefore);
+        this._editBefore = null;
         this.render();
       });
       row.appendChild(tag);
       row.appendChild(input);
+
+      const net = this.project.netOf(pinKey(comp.ref, pin.id));
+      if (net) {
+        const badge = document.createElement("span");
+        badge.className = "netbadge";
+        badge.textContent = net.label || net.id;
+        const off = document.createElement("button");
+        off.className = "minibtn";
+        off.textContent = "✕";
+        off.title = "disconnect this pin";
+        off.addEventListener("click", () => {
+          this.snapshot();
+          net.pins.delete(pinKey(comp.ref, pin.id));
+          if (net.pins.size === 0) this.project.nets = this.project.nets.filter((n) => n !== net);
+          this._afterStructuralChange(false);
+        });
+        row.appendChild(badge);
+        row.appendChild(off);
+      }
       list.appendChild(row);
     }
     box.appendChild(list);
