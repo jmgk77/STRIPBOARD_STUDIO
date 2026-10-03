@@ -757,6 +757,10 @@ export class App {
 
   _bindBoard() {
     this.svg.addEventListener("pointerdown", (evt) => {
+      // If a panel input still has focus, commit it before we re-render (otherwise the
+      // input is destroyed before its change event fires and the edit is lost).
+      const active = document.activeElement;
+      if (active && ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName)) active.blur();
       const pinEl = evt.target.closest("[data-pin]");
       if (pinEl && this.mode === "connect") {
         this.handlePinClick(`${pinEl.dataset.ref}.${pinEl.dataset.pin}`);
