@@ -47,6 +47,36 @@ button {
 }
 button:hover { border-color: #556; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #06121f; font-weight: 600; }
+#useThis { background: #e0a33a; border-color: #e0a33a; color: #20160a; font-weight: 700; }
+#useThis:hover { background: #f0b84a; }
+
+.menu { position: relative; }
+.menu > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel2);
+}
+.menu > summary::-webkit-details-marker { display: none; }
+.menu[open] > summary { border-color: var(--accent); }
+.menu-items {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 190px;
+}
+.menu-items button { text-align: left; }
 button.toggle.active { background: #1f6f43; border-color: #2a9d5f; }
 
 label { color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }

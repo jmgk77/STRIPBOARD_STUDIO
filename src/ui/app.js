@@ -858,6 +858,58 @@ export class App {
     if (note) note.textContent = this.active === "edit" ? "" : "read-only";
   }
 
+  printBoards() {
+    const project = this._shownProject();
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    const build = (view) => {
+      const svg = document.createElementNS(SVG_NS, "svg");
+      render(svg, {
+        project,
+        library: LIBRARY,
+        view,
+        selected: null,
+        pending: null,
+        mode: "select",
+        solved: project.jumpers.length > 0 || project.cuts.size > 0,
+        showNames: this.showNames,
+        selectedNet: null,
+        selectedWire: null,
+        focusNets: new Set(),
+        layers: { parts: true, wires: true, cuts: true, copper: true, nets: false, grid: true },
+        issues: [],
+      });
+      const vb = svg.viewBox.baseVal;
+      const mm = 2.54 / CELL; // one hole is 2.54 mm -> 1:1 at print 100%
+      svg.setAttribute("width", `${(vb.width * mm).toFixed(2)}mm`);
+      svg.setAttribute("height", `${(vb.height * mm).toFixed(2)}mm`);
+      return svg;
+    };
+    const front = build("front");
+    const copper = build("copper");
+    const cutList = [...project.cuts].sort().map((c) => {
+      const [x, y] = c.split(",").map(Number);
+      return `${rowLabel(y, project.rows)}${x}`;
+    }).join(" ") || "(none)";
+    const jumperList = project.jumpers.map((j) => `${j.x}${rowLabel(j.ya, project.rows)}-${j.x}${rowLabel(j.yb, project.rows)}`).join(" ") || "(none)";
+    const win = window.open("", "_blank");
+    if (!win) {
+      this._status("allow pop-ups to print");
+      return;
+    }
+    win.document.write(`<!doctype html><html><head><title>${project.title} — print 1:1</title>
+<style>@page{margin:10mm} body{font:12px monospace;margin:0} h3{margin:8px 0 4px} svg{display:block} .page{margin-bottom:10mm} pre{white-space:pre-wrap}</style>
+</head><body>
+<h3>Component side (1:1 — print at 100%, no scaling)</h3><div class="page">${front.outerHTML}</div>
+<h3>Copper side — mirrored (1:1)</h3><div class="page">${copper.outerHTML}</div>
+<h3>Cuts (${project.cuts.size})</h3><pre>${cutList}</pre>
+<h3>Jumpers (${project.jumpers.length})</h3><pre>${jumperList}</pre>
+</body></html>`);
+    win.document.close();
+    win.focus();
+    win.print();
+    this._status("print window opened (choose 100% scale / Save as PDF)");
+  }
+
   showAscii() {
     const pre = document.getElementById("asciiText");
     pre.textContent = toAscii(this.project, LIBRARY);
@@ -1000,10 +1052,12 @@ export class App {
     on("rotate", () => this.rotateSelected());
     on("lock", () => this.lockSelected());
     on("delete", () => this.deleteSelected());
-    on("solve", () => this.solve());
-    on("optimize", () => this.optimize());
-    on("compact", () => this.compact());
-    on("trim", () => this.trim());
+    on("print", () => this.printBoards());
+    for (const el of document.querySelectorAll("#exportMenu .menu-items button")) {
+      el.addEventListener("click", () => {
+        document.getElementById("exportMenu").open = false;
+      });
+    }
     on("ascii", () => this.showAscii());
     document.getElementById("asciiClose").addEventListener("click", () =>
       document.getElementById("asciiDlg").close(),
