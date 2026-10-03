@@ -121,7 +121,20 @@ export function renderSchematic(svg, state) {
   svg.setAttribute("width", width);
   svg.setAttribute("height", height);
   el("rect", { x: 0, y: 0, width, height, fill: "#fbfbf7" }, svg);
-  el("text", { x: width / 2, y: 20, "text-anchor": "middle", "font-size": 13, fill: "#6b7280" }, svg).textContent = `${project.title} — schematic (net labels)`;
+  el("text", { x: width / 2, y: 20, "text-anchor": "middle", "font-size": 13, fill: "#6b7280" }, svg).textContent = `${project.title} — schematic`;
+
+  // placed pins per net (and which nets are simple = exactly two pins -> draw a wire)
+  const netPins = new Map();
+  for (const it of items) {
+    for (const p of it.all) {
+      const net = project.netOf(`${it.comp.ref}.${p.id}`);
+      if (!net) continue;
+      const list = netPins.get(net.id) ?? [];
+      list.push({ x: it.cx + p.lx, y: it.cy + p.ly });
+      netPins.set(net.id, list);
+    }
+  }
+  const isWireNet = (id) => (netPins.get(id)?.length ?? 0) === 2;
 
   for (const it of items) {
     const { comp, part, layout } = it;
@@ -130,7 +143,6 @@ export function renderSchematic(svg, state) {
     const by = it.cy - layout.body.h / 2;
     el("rect", { x: bx, y: by, width: layout.body.w, height: layout.body.h, rx: 4, fill: "#ffffff", stroke: "#202020", "stroke-width": 1.6 }, s);
 
-    // pin stubs + labels
     for (const p of it.all) {
       const side = layout.left.includes(p) ? -1 : 1;
       const edgeX = side < 0 ? bx : bx + layout.body.w;
@@ -138,9 +150,9 @@ export function renderSchematic(svg, state) {
       const py = it.cy + p.ly;
       el("line", { x1: edgeX, y1: py, x2: px, y2: py, stroke: LINE, "stroke-width": 1.4 }, s);
       el("circle", { cx: px, cy: py, r: 2.6, fill: LINE }, s);
-      const key = `${comp.ref}.${p.id}`;
-      const net = project.netOf(key);
-      if (net) {
+      const net = project.netOf(`${comp.ref}.${p.id}`);
+      if (net && !isWireNet(net.id)) {
+        // complex net: a label (name or number) instead of a wire
         const lit = focus.has(net.id);
         const col = colors.get(net.id);
         const g = el("g", { "data-net": net.id, class: "wire hoverable", cursor: "pointer" }, s);
@@ -149,7 +161,7 @@ export function renderSchematic(svg, state) {
           x: px + side * 18, y: py + 3, "text-anchor": side < 0 ? "end" : "start",
           "font-size": 10, "font-weight": lit ? 700 : 600, fill: col,
         }, g).textContent = labelOf(net);
-      } else {
+      } else if (!net) {
         el("text", { x: px + side * 6, y: py - 3, "text-anchor": side < 0 ? "end" : "start", "font-size": 8, fill: "#999" }, s).textContent = p.id;
       }
     }
@@ -157,6 +169,22 @@ export function renderSchematic(svg, state) {
     const label = `${comp.ref}${comp.value ? ` ${comp.value}` : ""}`;
     const sel = selected === comp.ref;
     el("text", { x: it.cx, y: by - 7, "text-anchor": "middle", "font-size": 10, fill: sel ? "#2a9d5f" : "#101010", "font-weight": sel ? 700 : 400 }, s).textContent = label;
+  }
+
+  // simple (2-pin) nets: an orthogonal wire, drawn on top
+  for (const net of project.nets) {
+    const pts = netPins.get(net.id);
+    if (!pts || pts.length !== 2) continue;
+    const [a, b] = pts;
+    const lit = focus.has(net.id);
+    const col = colors.get(net.id);
+    const g = el("g", { "data-net": net.id, class: "wire hoverable", cursor: "pointer" }, svg);
+    el("path", { d: `M ${a.x} ${a.y} L ${b.x} ${a.y} L ${b.x} ${b.y}`, fill: "none", stroke: col, "stroke-width": lit ? 3 : 1.8 }, g);
+    for (const p of [a, b]) {
+      el("circle", { cx: p.x, cy: p.y, r: 3.2, fill: col }, g);
+      el("circle", { cx: p.x, cy: p.y, r: 8, fill: "transparent" }, g);
+    }
+    el("text", { x: (a.x + b.x) / 2 + 6, y: a.y - 4, "font-size": 10, "font-weight": 600, fill: col }, g).textContent = labelOf(net);
   }
 }
 
