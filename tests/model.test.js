@@ -38,6 +38,19 @@ test("pinLabel prefers the instance pin name", () => {
   assert.equal(pinLabel(p, "U1.L2"), "U1.L2");
 });
 
+test("renameComponent moves the net pins that reference it", () => {
+  const p = new Project();
+  p.addComponent(new Component({ ref: "J1", part: "header2" }));
+  p.addComponent(new Component({ ref: "J2", part: "header2" }));
+  p.nets = [new Net("A", [pinKey("J1", "1"), pinKey("J2", "1")])];
+  p.renameComponent("J1", "entrada energia");
+  assert.ok(p.components.has("entrada energia"));
+  assert.ok(!p.components.has("J1"));
+  assert.equal(p.netOf("entrada energia.1").id, "A");
+  assert.ok(p.netOf("J2.1"));
+  assert.throws(() => p.renameComponent("J2", "entrada energia"));
+});
+
 test("assignPin moves a pin into a net and out of others", () => {
   const p = new Project();
   p.addComponent(new Component({ ref: "J1", part: "header2" }));

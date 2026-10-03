@@ -202,9 +202,27 @@ export class App {
     }
     const part = LIBRARY.get(comp.part);
     const head = document.createElement("div");
-    const lock = comp.locked ? "locked" : "free";
-    head.textContent = `${comp.ref} — ${part?.label ?? comp.part} — rot ${comp.rot}° — ${lock}`;
+    head.className = "pinrow";
+    const refTag = document.createElement("span");
+    refTag.className = "pintag";
+    refTag.textContent = "ref";
+    const refInput = document.createElement("input");
+    refInput.type = "text";
+    refInput.value = comp.ref;
+    refInput.placeholder = "name";
+    refInput.addEventListener("focus", () => {
+      this._editBefore = JSON.stringify(this.project.toJSON());
+    });
+    refInput.addEventListener("change", () => this._renameSelected(refInput));
+    head.appendChild(refTag);
+    head.appendChild(refInput);
     box.appendChild(head);
+
+    const meta = document.createElement("div");
+    meta.className = "muted";
+    const lock = comp.locked ? "locked" : "free";
+    meta.textContent = `${part?.label ?? comp.part} — rot ${comp.rot}° — ${lock}`;
+    box.appendChild(meta);
 
     if (part?.bendable) {
       const row = document.createElement("div");
@@ -353,6 +371,28 @@ export class App {
     this.project.addComponent(new Component({ ref, part: name, x: spot.x, y: spot.y, rot: 0, locked: false, value: part.defaultValue }));
     this.selected = ref;
     this._afterStructuralChange();
+  }
+
+  _renameSelected(input) {
+    const comp = this.selected && this.project.components.get(this.selected);
+    if (!comp) return;
+    const next = input.value.trim();
+    if (!next || next === comp.ref) {
+      input.value = comp.ref;
+      return;
+    }
+    if (next.includes(".") || this.project.components.has(next)) {
+      this._status(next.includes(".") ? "name cannot contain '.'" : `name ${next} is already used`);
+      input.value = comp.ref;
+      return;
+    }
+    if (this._editBefore) this.pushHistory(this._editBefore);
+    this._editBefore = null;
+    const old = comp.ref;
+    this.project.renameComponent(old, next);
+    this.selected = next;
+    this.render();
+    this._status(`renamed ${old} to ${next}`);
   }
 
   openNewPart() {

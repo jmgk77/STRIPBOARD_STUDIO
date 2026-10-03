@@ -81,6 +81,29 @@ export class Project {
     this.nets = this.nets.filter((n) => n.pins.size > 0);
   }
 
+  /** Rename a component, moving every net pin key that references it. */
+  renameComponent(oldRef, newRef) {
+    const name = String(newRef).trim();
+    if (!name || name === oldRef) return oldRef;
+    if (name.includes(".")) throw new Error("a component name cannot contain '.'");
+    if (this.components.has(name)) throw new Error(`name ${name} is already used`);
+    const comp = this.components.get(oldRef);
+    if (!comp) return oldRef;
+    this.components.delete(oldRef);
+    comp.ref = name;
+    this.components.set(name, comp);
+    const prefix = `${oldRef}.`;
+    for (const net of this.nets) {
+      for (const key of [...net.pins]) {
+        if (key.startsWith(prefix)) {
+          net.pins.delete(key);
+          net.pins.add(`${name}.${key.slice(prefix.length)}`);
+        }
+      }
+    }
+    return name;
+  }
+
   uniqueRef(prefix) {
     let n = 1;
     while (this.components.has(`${prefix}${n}`)) n += 1;
