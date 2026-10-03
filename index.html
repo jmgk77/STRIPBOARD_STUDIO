@@ -30,6 +30,7 @@
     <button id="compact">Compact</button>
     <button id="trim">Trim board</button>
     <button id="ascii">Text</button>
+    <button id="netlist">Netlist</button>
     <span id="status" class="status"></span>
   </header>
   <main>
@@ -88,6 +89,21 @@
       <label id="rowLeft">Left prefix <input id="pLeft" type="text" value="L" size="8"></label>
       <label id="rowRight">Right prefix <input id="pRight" type="text" value="R" size="8"></label>
     </div>
+  </dialog>
+  <dialog id="netDlg">
+    <div class="dlgbar">
+      <strong>Netlist</strong>
+      <select id="netFormat">
+        <option value="json">JSON</option>
+        <option value="spice">SPICE</option>
+        <option value="kicad">KiCad (.net)</option>
+      </select>
+      <span class="grow"></span>
+      <button id="netCopy">Copy</button>
+      <button id="netDownload">Download</button>
+      <button id="netClose">Close</button>
+    </div>
+    <pre id="netText"></pre>
   </dialog>
   <dialog id="asciiDlg">
     <div class="dlgbar">

@@ -8,6 +8,7 @@ import { route } from "../core/router.js";
 import { optimize as optimizeLayout, COMPACT_WEIGHTS } from "../core/optimize.js";
 import { contentBounds, rotateLocal } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
+import { exportNetlist } from "../core/netlist.js";
 import { render, CELL, PAD } from "./scene.js";
 
 const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q", module: "U" };
@@ -672,13 +673,13 @@ export class App {
     sel.addRange(range);
   }
 
-  _copyAscii() {
-    const pre = document.getElementById("asciiText");
+  _copyPre(id, label) {
+    const pre = document.getElementById(id);
     const fallback = () => {
       this._select(pre);
       try {
         const ok = document.execCommand("copy");
-        this._status(ok ? "board text copied" : "text selected — press Ctrl+C");
+        this._status(ok ? `${label} copied` : "text selected — press Ctrl+C");
       } catch {
         this._status("text selected — press Ctrl+C");
       }
@@ -686,11 +687,33 @@ export class App {
     if (navigator.clipboard?.writeText) {
       navigator.clipboard
         .writeText(pre.textContent)
-        .then(() => this._status("board text copied"))
+        .then(() => this._status(`${label} copied`))
         .catch(fallback);
     } else {
       fallback();
     }
+  }
+
+  showNetlist() {
+    this._renderNetlist();
+    document.getElementById("netDlg").showModal();
+  }
+
+  _renderNetlist() {
+    const fmt = document.getElementById("netFormat").value;
+    document.getElementById("netText").textContent = exportNetlist(this.project, LIBRARY, fmt);
+  }
+
+  _downloadNetlist() {
+    const fmt = document.getElementById("netFormat").value;
+    const ext = { json: "json", spice: "cir", kicad: "net" }[fmt] || "txt";
+    const blob = new Blob([document.getElementById("netText").textContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${this.fileName || this.project.title || "board"}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   setView(copper) {
@@ -781,7 +804,12 @@ export class App {
     document.getElementById("asciiClose").addEventListener("click", () =>
       document.getElementById("asciiDlg").close(),
     );
-    document.getElementById("asciiCopy").addEventListener("click", () => this._copyAscii());
+    document.getElementById("asciiCopy").addEventListener("click", () => this._copyPre("asciiText", "board text"));
+    on("netlist", () => this.showNetlist());
+    document.getElementById("netFormat").addEventListener("change", () => this._renderNetlist());
+    document.getElementById("netClose").addEventListener("click", () => document.getElementById("netDlg").close());
+    document.getElementById("netCopy").addEventListener("click", () => this._copyPre("netText", "netlist"));
+    document.getElementById("netDownload").addEventListener("click", () => this._downloadNetlist());
     on("connect", () => this.setMode(this.mode === "connect" ? "select" : "connect"));
     document.getElementById("names").addEventListener("change", (e) => {
       this.showNames = e.target.checked;
