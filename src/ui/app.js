@@ -43,6 +43,7 @@ export class App {
     this.selected = null;
     this.pending = null;
     this.jumperStart = null; // first hole of a jumper being drawn by hand
+    this.activeGroup = null; // group that G adds to (cleared by Esc)
     this.mode = "select";
     this.solved = false;
     this.showNames = true;
@@ -120,7 +121,7 @@ export class App {
       library: LIBRARY,
       view: this.view,
       selected: this.selected,
-      selectedGroup: (this.selected && project.components.get(this.selected)?.group) || null,
+      selectedGroup: (this.selected && project.components.get(this.selected)?.group) || this.activeGroup || null,
       pending: this.pending,
       jumperStart: this.jumperStart,
       mode: this.mode,
@@ -1081,6 +1082,57 @@ export class App {
   /** Every component sharing a group name (empty name -> just that component). */
   _groupMembers(name) {
     return [...this.project.components.values()].filter((c) => c.group === name);
+  }
+
+  /** First unused auto group name (G1, G2, ...). */
+  _newGroupName() {
+    const used = new Set([...this.project.components.values()].map((c) => c.group).filter(Boolean));
+    let n = 1;
+    while (used.has(`G${n}`)) n += 1;
+    return `G${n}`;
+  }
+
+  /**
+   * `G`: with a part selected, either make its group the active one (so the next parts join
+   * it) or add it to the active group — creating one if none is active.
+   */
+  _addToGroup() {
+    if (!this._guard()) return;
+    const comp = this.selected && this.project.components.get(this.selected);
+    if (!comp) {
+      this._status("select a part first, then press G");
+      return;
+    }
+    if (comp.group) {
+      this.activeGroup = comp.group;
+      this._status(`active group: "${comp.group}" — select parts and press G to add them`);
+      return;
+    }
+    if (!this.activeGroup) this.activeGroup = this._newGroupName();
+    this.snapshot();
+    comp.group = this.activeGroup;
+    this._afterStructuralChange(false);
+    this._status(`${comp.ref} added to group "${this.activeGroup}"`);
+  }
+
+  /** `Shift+G`: remove the selected part from its group. */
+  _removeFromGroup() {
+    if (!this._guard()) return;
+    const comp = this.selected && this.project.components.get(this.selected);
+    if (!comp) {
+      this._status("select a part first");
+      return;
+    }
+    if (!comp.group) {
+      this._status(`${comp.ref} is not in a group`);
+      return;
+    }
+    const name = comp.group;
+    this.snapshot();
+    comp.group = "";
+    if (this._groupMembers(name).length === 0 && this.activeGroup === name) this.activeGroup = null;
+    this._afterStructuralChange(false);
+    this._status(`${comp.ref} removed from group "${name}"`);
   }
 
   /** Cell under the pointer, or null when the click lands off the board. */
@@ -2107,6 +2159,7 @@ export class App {
   _clearSelection() {
     this.pending = null;
     this.jumperStart = null;
+    this.activeGroup = null; // Esc also ends the "add to group" session
     this.selected = null;
     this.selectedWire = null;
     this.selectedNet = null;
@@ -2155,6 +2208,7 @@ export class App {
       if (lower === "c") return this.setMode("connect");
       if (lower === "r") return this.rotateSelected(evt.shiftKey ? -1 : 1);
       if (lower === "l") return this.lockSelected();
+      if (lower === "g") return evt.shiftKey ? this._removeFromGroup() : this._addToGroup();
     });
   }
 
