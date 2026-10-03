@@ -31,4 +31,4 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404).end("not found");
   }
-}).listen(8080, () => console.log("stripboard planner: http://localhost:8080"));
+}).listen(8080, () => console.log("Stripboard Studio: http://localhost:8080"));

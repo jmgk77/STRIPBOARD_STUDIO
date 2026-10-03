@@ -856,6 +856,14 @@ export class App {
     if (use) use.style.display = this.active === "edit" ? "none" : "";
     const note = document.getElementById("tabNote");
     if (note) note.textContent = this.active === "edit" ? "" : "read-only";
+    const probTab = document.querySelector('.tabbar .tab[data-tab="problems"]');
+    if (probTab) {
+      const errors = this.issues.filter((i) => i.level === "error").length;
+      const warns = this.issues.filter((i) => i.level === "warn").length;
+      probTab.textContent = errors || warns ? `Problems (${errors || warns})` : "Problems";
+      probTab.classList.toggle("alert", errors > 0);
+      probTab.classList.toggle("warn", errors === 0 && warns > 0);
+    }
   }
 
   printBoards() {
@@ -865,9 +873,6 @@ export class App {
     if (ans == null) return;
     const m = /^\s*([A-Za-z]+)\s*(\d+)\s*$/.exec(ans);
     const origin = m ? { row: lettersToNum(m[1]), col: Number(m[2]) } : { row: 1, col: 1 };
-    const scaleAns = window.prompt("Scale: type 'fit' to fill the page width, or '1:1' for true scale", "fit");
-    if (scaleAns == null) return;
-    const fitMode = !/^\s*1\s*:\s*1\s*$/.test(scaleAns);
     const colText = (x) => String(origin.col + x - 1);
     const rowText = (y) => rowLetter(origin.row + rows - y);
     const cell = (x, y) => `${rowText(y)}${colText(x)}`;
@@ -883,7 +888,7 @@ export class App {
         pending: null,
         mode: "select",
         solved: project.jumpers.length > 0 || project.cuts.size > 0,
-        showNames: view === "front" && !fitMode,
+        showNames: view === "front",
         selectedNet: null,
         selectedWire: null,
         focusNets: new Set(),
@@ -892,15 +897,10 @@ export class App {
         mono: true, // black & white, for a non-colour printer
         issues: [],
       });
-      if (fitMode) {
-        svg.setAttribute("width", "100%");
-        svg.removeAttribute("height");
-      } else {
-        const vb = svg.viewBox.baseVal;
-        const mm = 2.54 / CELL; // one hole = 2.54 mm -> true scale at print 100%
-        svg.setAttribute("width", `${(vb.width * mm).toFixed(2)}mm`);
-        svg.setAttribute("height", `${(vb.height * mm).toFixed(2)}mm`);
-      }
+      const vb = svg.viewBox.baseVal;
+      const mm = 2.54 / CELL; // one hole = 2.54 mm -> true scale at print 100%
+      svg.setAttribute("width", `${(vb.width * mm).toFixed(2)}mm`);
+      svg.setAttribute("height", `${(vb.height * mm).toFixed(2)}mm`);
       return svg;
     };
     const front = build("front", true);
@@ -930,7 +930,7 @@ export class App {
       .join("\n") || "(none)";
     const netRows = project.nets.map((n) => `${n.label || n.id}: ${[...n.pins].sort().join(", ")}`).join("\n") || "(none)";
     const steps = [
-      `1. ${fitMode ? "Views are scaled to the page width (reference; not true scale)." : "Print at 100% (no scaling/fit) for true scale."} Board ${cols} x ${rows} holes = ${(cols * 2.54).toFixed(1)} x ${(rows * 2.54).toFixed(1)} mm.`,
+      `1. Print at 100% (no 'fit to page') for true scale. Board ${cols} x ${rows} holes = ${(cols * 2.54).toFixed(1)} x ${(rows * 2.54).toFixed(1)} mm. (Scale relies on the browser print dialog; a direct vector-PDF export is not built yet.)`,
       `2. On the COPPER side, cut the tracks at: ${cutList}`,
       `3. On the COPPER side, solder the jumpers: ${jumperList}`,
       `4. On the COMPONENT side, insert and solder ${comps.length} part(s), mind orientation:`,
@@ -947,8 +947,8 @@ export class App {
     win.document.write(`<!doctype html><html><head><title>${project.title} — print 1:1</title>
 <style>@page{size:A4;margin:10mm} body{font:12px monospace;margin:0;color:#000} h3{margin:8px 0 4px} svg{display:block;height:auto} .page{margin-bottom:10mm} pre{white-space:pre-wrap;font:12px monospace}</style>
 </head><body>
-<h3>Component side (${fitMode ? "fit page width" : "1:1"}) — origin ${rowLetter(origin.row)}${origin.col}</h3><div class="page">${front.outerHTML}</div>
-<h3>Copper side, mirrored (${fitMode ? "fit page width" : "1:1"}, no components)</h3><div class="page">${copper.outerHTML}</div>
+<h3>Component side (1:1) — origin ${rowLetter(origin.row)}${origin.col}</h3><div class="page">${front.outerHTML}</div>
+<h3>Copper side, mirrored (1:1, no components)</h3><div class="page">${copper.outerHTML}</div>
 <h3>Cuts (${project.cuts.size})</h3><pre>${cutList}</pre>
 <h3>Jumpers (${project.jumpers.length})</h3><pre>${jumperList}</pre>
 <h3>BOM</h3><pre>${bomRows}</pre>
@@ -1468,7 +1468,7 @@ export class App {
   }
 
   _status(msg) {
-    document.title = `Stripboard Planner — ${msg}`;
+    document.title = `Stripboard Studio — ${msg}`;
     const el = document.getElementById("status");
     if (el) el.textContent = msg;
   }
