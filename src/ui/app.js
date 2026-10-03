@@ -33,6 +33,7 @@ export class App {
     this.versions = { solve: null, optimize: null, compact: null, trim: null };
     this._editingPart = null;
     this._editBefore = null;
+    this._statusTimer = null;
     this.fileName = null;
     this.issues = [];
     this.history = [];
@@ -868,6 +869,10 @@ export class App {
 
   printBoards() {
     const project = this._shownProject();
+    if (!this._solvedShown()) {
+      this._status("nothing to print yet — run Solve first");
+      return;
+    }
     const { cols, rows } = project;
     const ans = window.prompt("Print origin — the reference of the top-left hole (e.g. A1 or F15)", "A1");
     if (ans == null) return;
@@ -961,10 +966,15 @@ export class App {
   }
 
   showAscii() {
+    const project = this._shownProject();
+    if (project.components.size === 0) {
+      this._status("nothing to export — add some parts first");
+      return;
+    }
     const pre = document.getElementById("asciiText");
-    pre.textContent = toAscii(this.project, LIBRARY);
+    pre.textContent = toAscii(project, LIBRARY);
     document.getElementById("asciiDlg").showModal();
-    this._select( pre); // so Ctrl+C works even if the clipboard API is blocked
+    this._select(pre); // so Ctrl+C works even if the clipboard API is blocked
   }
 
   _select(node) {
@@ -997,13 +1007,18 @@ export class App {
   }
 
   showNetlist() {
+    const project = this._shownProject();
+    if (project.components.size === 0 || project.nets.length === 0) {
+      this._status("nothing to export — add parts and nets first");
+      return;
+    }
     this._renderNetlist();
     document.getElementById("netDlg").showModal();
   }
 
   _renderNetlist() {
     const fmt = document.getElementById("netFormat").value;
-    document.getElementById("netText").textContent = exportNetlist(this.project, LIBRARY, fmt);
+    document.getElementById("netText").textContent = exportNetlist(this._shownProject(), LIBRARY, fmt);
   }
 
   _downloadNetlist() {
@@ -1471,6 +1486,18 @@ export class App {
     document.title = `Stripboard Studio — ${msg}`;
     const el = document.getElementById("status");
     if (el) el.textContent = msg;
+    clearTimeout(this._statusTimer);
+    if (!msg) return;
+    this._statusTimer = setTimeout(() => {
+      const box = document.getElementById("status");
+      if (box) box.textContent = "";
+      document.title = "Stripboard Studio";
+    }, 6000);
+  }
+
+  _solvedShown() {
+    const p = this._shownProject();
+    return p.jumpers.length > 0 || p.cuts.size > 0;
   }
 
   /** Run a heavy synchronous task with a visible "busy" state painted first. */
