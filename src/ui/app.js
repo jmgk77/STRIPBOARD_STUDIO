@@ -87,7 +87,10 @@ export class App {
       box.innerHTML = '<div class="muted">no nets yet — use Connect</div>';
       return;
     }
-    for (const net of this.project.nets) {
+    const ordered = [...this.project.nets].sort((a, b) =>
+      (a.label || a.id).localeCompare(b.label || b.id, undefined, { numeric: true }),
+    );
+    for (const net of ordered) {
       const row = document.createElement("div");
       row.className = "item" + (this.selectedNet === net.id ? " active" : "");
 

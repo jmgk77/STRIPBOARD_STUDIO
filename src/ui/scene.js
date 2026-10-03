@@ -241,6 +241,7 @@ function drawRatsnest(svg, state, sx, sy, colors) {
 
 function drawComponent(svg, comp, part, state, sx, sy, colors) {
   const { project, selected, pending } = state;
+  const selectedNet = state.selectedNet ?? null;
   const isSel = selected === comp.ref;
   const wired = part.pins.some((p) => project.netOf(`${comp.ref}.${p.id}`));
   const pts = componentPins(comp, part).map((p) => ({ id: p.id, X: sx(p.x), Y: sy(p.y), cx: p.x, cy: p.y }));
@@ -278,14 +279,18 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
 
   drawGlyph(g, part, pts);
 
-  // pins: visible dot (no events); when this part is selected, colour wired pins by net
+  // pins: visible dot (no events). A pin lights up when its net is selected, or when the
+  // part is selected (colour = its net).
   for (const p of pts) {
     const isPending = pending && pending === `${comp.ref}.${p.id}`;
-    const net = isSel ? project.netOf(`${comp.ref}.${p.id}`) : null;
+    const net = project.netOf(`${comp.ref}.${p.id}`);
+    const inSelNet = selectedNet && net && net.id === selectedNet;
+    const lit = isPending || inSelNet || (isSel && net);
     el("circle", {
-      cx: p.X, cy: p.Y, r: isPending ? 6.5 : 4.5,
-      fill: isPending ? "#ffcc33" : net ? colors.get(net.id) || "#202020" : "#202020",
-      stroke: isPending ? "#ffaa00" : "#202020", "stroke-width": isPending ? 2.5 : 1,
+      cx: p.X, cy: p.Y, r: isPending ? 6.5 : lit ? 6 : 4.5,
+      fill: isPending ? "#ffcc33" : lit && net ? colors.get(net.id) || "#202020" : "#202020",
+      stroke: isPending ? "#ffaa00" : inSelNet ? "#ffffff" : "#202020",
+      "stroke-width": inSelNet || isPending ? 2.5 : 1,
       "pointer-events": "none",
     }, g);
   }
