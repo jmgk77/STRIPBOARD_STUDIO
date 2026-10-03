@@ -6,7 +6,7 @@ import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } 
 import { analyze } from "../core/connectivity.js";
 import { route } from "../core/router.js";
 import { optimize as optimizeLayout, COMPACT_WEIGHTS } from "../core/optimize.js";
-import { contentBounds, rotateLocal, rowLabel } from "../core/geometry.js";
+import { contentBounds, rotateLocal, rowLabel, rowLetter } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
 import { exportNetlist } from "../core/netlist.js";
 import { alignCuts } from "../core/align.js";
@@ -860,8 +860,17 @@ export class App {
 
   printBoards() {
     const project = this._shownProject();
+    const { cols, rows } = project;
+    const ans = window.prompt("Print origin — the reference of the top-left hole (e.g. A1 or F15)", "A1");
+    if (ans == null) return;
+    const m = /^\s*([A-Za-z]+)\s*(\d+)\s*$/.exec(ans);
+    const origin = m ? { row: lettersToNum(m[1]), col: Number(m[2]) } : { row: 1, col: 1 };
+    const colText = (x) => String(origin.col + x - 1);
+    const rowText = (y) => rowLetter(origin.row + rows - y);
+    const cell = (x, y) => `${rowText(y)}${colText(x)}`;
+
     const SVG_NS = "http://www.w3.org/2000/svg";
-    const build = (view) => {
+    const build = (view, parts) => {
       const svg = document.createElementNS(SVG_NS, "svg");
       render(svg, {
         project,
@@ -871,43 +880,75 @@ export class App {
         pending: null,
         mode: "select",
         solved: project.jumpers.length > 0 || project.cuts.size > 0,
-        showNames: this.showNames,
+        showNames: view === "front",
         selectedNet: null,
         selectedWire: null,
         focusNets: new Set(),
-        layers: { parts: true, wires: true, cuts: true, copper: true, nets: false, grid: true },
+        layers: { parts, wires: true, cuts: true, copper: true, nets: false, grid: true },
+        origin,
         issues: [],
       });
       const vb = svg.viewBox.baseVal;
-      const mm = 2.54 / CELL; // one hole is 2.54 mm -> 1:1 at print 100%
+      const mm = 2.54 / CELL; // one hole = 2.54 mm -> true scale at print 100%
       svg.setAttribute("width", `${(vb.width * mm).toFixed(2)}mm`);
       svg.setAttribute("height", `${(vb.height * mm).toFixed(2)}mm`);
       return svg;
     };
-    const front = build("front");
-    const copper = build("copper");
+    const front = build("front", true);
+    const copper = build("copper", false); // copper side WITHOUT components
+
     const cutList = [...project.cuts].sort().map((c) => {
       const [x, y] = c.split(",").map(Number);
-      return `${rowLabel(y, project.rows)}${x}`;
+      return cell(x, y);
     }).join(" ") || "(none)";
-    const jumperList = project.jumpers.map((j) => `${j.x}${rowLabel(j.ya, project.rows)}-${j.x}${rowLabel(j.yb, project.rows)}`).join(" ") || "(none)";
+    const jumperList = project.jumpers.map((j) => `${cell(j.x, j.ya)}-${cell(j.x, j.yb)} (${j.net || "?"})`).join("; ") || "(none)";
+
+    const bom = new Map();
+    for (const c of project.components.values()) {
+      const key = `${c.part}|${c.value || ""}`;
+      const entry = bom.get(key) ?? { part: c.part, value: c.value || "", refs: [] };
+      entry.refs.push(c.ref);
+      bom.set(key, entry);
+    }
+    const bomRows = [...bom.values()]
+      .sort((a, b) => a.part.localeCompare(b.part))
+      .map((e) => `${e.value ? `${e.value} ` : ""}${e.part} ×${e.refs.length} — ${e.refs.sort().join(", ")}`)
+      .join("\n") || "(none)";
+
+    const comps = [...project.components.values()].sort((a, b) => a.ref.localeCompare(b.ref));
+    const compRows = comps
+      .map((c) => `${c.ref} — ${c.part}${c.value ? ` (${c.value})` : ""} — at ${cell(c.x, c.y)}${c.rot ? ` rot ${c.rot}°` : ""}`)
+      .join("\n") || "(none)";
+    const netRows = project.nets.map((n) => `${n.label || n.id}: ${[...n.pins].sort().join(", ")}`).join("\n") || "(none)";
+    const steps = [
+      `1. Print at 100% (no scaling/fit). Board ${cols} x ${rows} holes = ${(cols * 2.54).toFixed(1)} x ${(rows * 2.54).toFixed(1)} mm.`,
+      `2. On the COPPER side, cut the tracks at: ${cutList}`,
+      `3. On the COPPER side, solder the jumpers: ${jumperList}`,
+      `4. On the COMPONENT side, insert and solder ${comps.length} part(s), mind orientation:`,
+      compRows,
+      `5. Final electrical check against the nets:`,
+      netRows,
+    ].join("\n");
+
     const win = window.open("", "_blank");
     if (!win) {
       this._status("allow pop-ups to print");
       return;
     }
     win.document.write(`<!doctype html><html><head><title>${project.title} — print 1:1</title>
-<style>@page{margin:10mm} body{font:12px monospace;margin:0} h3{margin:8px 0 4px} svg{display:block} .page{margin-bottom:10mm} pre{white-space:pre-wrap}</style>
+<style>@page{margin:10mm} body{font:12px monospace;margin:0} h3{margin:8px 0 4px} svg{display:block} .page{margin-bottom:10mm} pre{white-space:pre-wrap;font:12px monospace}</style>
 </head><body>
-<h3>Component side (1:1 — print at 100%, no scaling)</h3><div class="page">${front.outerHTML}</div>
-<h3>Copper side — mirrored (1:1)</h3><div class="page">${copper.outerHTML}</div>
+<h3>Component side (1:1) — origin ${rowLetter(origin.row)}${origin.col}</h3><div class="page">${front.outerHTML}</div>
+<h3>Copper side, mirrored (1:1, no components)</h3><div class="page">${copper.outerHTML}</div>
 <h3>Cuts (${project.cuts.size})</h3><pre>${cutList}</pre>
 <h3>Jumpers (${project.jumpers.length})</h3><pre>${jumperList}</pre>
+<h3>BOM</h3><pre>${bomRows}</pre>
+<h3>Assembly steps</h3><pre>${steps}</pre>
 </body></html>`);
     win.document.close();
     win.focus();
     win.print();
-    this._status("print window opened (choose 100% scale / Save as PDF)");
+    this._status("print window opened (print at 100% / Save as PDF)");
   }
 
   showAscii() {
@@ -1437,6 +1478,12 @@ export class App {
       }),
     );
   }
+}
+
+function lettersToNum(s) {
+  let n = 0;
+  for (const ch of s.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
 }
 
 function starterProject() {

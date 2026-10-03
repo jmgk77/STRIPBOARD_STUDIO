@@ -1,7 +1,7 @@
 // SVG rendering of the board. Pure draw: it builds the SVG DOM from a state object and
 // sets data attributes for event delegation. No application state lives here.
 
-import { componentPins, componentBody, contentBounds, rowLabel } from "../core/geometry.js";
+import { componentPins, componentBody, contentBounds, rowLabel, rowLetter } from "../core/geometry.js";
 import { cellId } from "../core/connectivity.js";
 import { splitPin } from "../core/model.js";
 
@@ -48,6 +48,9 @@ export function render(svg, state) {
   const { project, library, view, selected, pending, solved, showNames = true } = state;
   const focusNets = state.focusNets ?? new Set();
   const selectedWire = state.selectedWire ?? null;
+  const origin = state.origin ?? { row: 1, col: 1 }; // printed label origin (default A1)
+  const colText = (x) => String(origin.col + x - 1);
+  const rowText = (y) => rowLetter(origin.row + rows - y);
   const L = state.layers ?? { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
   const { sx, sy } = makeMapper(state);
   const { cols, rows } = project;
@@ -177,13 +180,13 @@ export function render(svg, state) {
 
   // axis labels: columns numbered along the top, rows lettered down the left (A at bottom)
   for (let x = 1; x <= cols; x++) {
-    el("text", { x: sx(x), y: PAD - CELL / 2 - 7, "text-anchor": "middle", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = String(x);
+    el("text", { x: sx(x), y: PAD - CELL / 2 - 7, "text-anchor": "middle", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = colText(x);
   }
   // On the copper side the board is flipped, so the row letters move to the right edge.
   const lettersRight = view === "copper";
   const lettersX = lettersRight ? PAD - CELL / 2 + cols * CELL + 8 : PAD - CELL / 2 - 8;
   for (let y = 1; y <= rows; y++) {
-    el("text", { x: lettersX, y: sy(y) + 3, "text-anchor": lettersRight ? "start" : "end", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = rowLabel(y, rows);
+    el("text", { x: lettersX, y: sy(y) + 3, "text-anchor": lettersRight ? "start" : "end", "font-size": 9, fill: "#9aa2ac", "pointer-events": "none" }, svg).textContent = rowText(y);
   }
 
   drawCutBorder(svg, state, sx, sy);
