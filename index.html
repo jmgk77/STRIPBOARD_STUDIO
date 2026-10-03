@@ -41,6 +41,21 @@
     <button id="addJumper" class="toggle">Jumper</button>
     <button id="addMount" class="toggle">Mount</button>
     <span class="sep"></span>
+    <details class="menu" id="viewMenu">
+      <summary>View</summary>
+      <div class="menu-items">
+        <label class="check"><input type="checkbox" id="lc-parts" checked> parts</label>
+        <label class="check"><input type="checkbox" id="lc-wires" checked> wires</label>
+        <label class="check"><input type="checkbox" id="lc-cuts" checked> cuts</label>
+        <label class="check"><input type="checkbox" id="lc-copper" checked> copper</label>
+        <label class="check"><input type="checkbox" id="lc-nets" checked> nets</label>
+        <label class="check"><input type="checkbox" id="lc-grid" checked> grid 5x5</label>
+        <div class="menusep"></div>
+        <label class="check"><input type="checkbox" id="copper"> copper side (mirrored)</label>
+        <label class="check"><input type="checkbox" id="names" checked> pin names</label>
+        <label class="check"><input type="checkbox" id="schematic"> schematic view</label>
+      </div>
+    </details>
     <details class="menu" id="exportMenu">
       <summary>Export</summary>
       <div class="menu-items">
@@ -57,17 +72,6 @@
       <button id="newPart" class="wide">+ New pin bar</button>
       <input id="partSearch" type="search" placeholder="search parts…" autocomplete="off">
       <div id="palette-list" class="list"></div>
-
-      <h3>View</h3>
-      <label class="check"><input type="checkbox" id="lc-parts" checked> parts</label>
-      <label class="check"><input type="checkbox" id="lc-wires" checked> wires</label>
-      <label class="check"><input type="checkbox" id="lc-cuts" checked> cuts</label>
-      <label class="check"><input type="checkbox" id="lc-copper" checked> copper</label>
-      <label class="check"><input type="checkbox" id="lc-nets" checked> nets</label>
-      <label class="check"><input type="checkbox" id="lc-grid" checked> grid 5x5</label>
-      <label class="check"><input type="checkbox" id="copper"> copper side</label>
-      <label class="check"><input type="checkbox" id="names" checked> pin names</label>
-      <label class="check"><input type="checkbox" id="schematic"> schematic view</label>
     </aside>
     <div id="center">
       <div class="vtabbar">

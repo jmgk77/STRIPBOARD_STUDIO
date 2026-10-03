@@ -73,6 +73,13 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 }
 .menu > summary::-webkit-details-marker { display: none; }
 .menu[open] > summary { border-color: var(--accent); }
+.menu-items label.check {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12px;
+}
+.menu-items label.check:hover { background: var(--panel2); }
+.menu-items label.check input { margin: 0; }
+.menusep { height: 1px; background: var(--line); margin: 2px 4px; }
 .menu-items {
   position: absolute;
   z-index: 20;

@@ -53,6 +53,7 @@ export class App {
     this._editBefore = null;
     this._statusTimer = null;
     this._paletteQuery = "";
+    this._paletteOpen = new Set(); // palette groups the user expanded (default: minimized)
     this._recentParts = this._loadRecent();
     this.fileName = null;
     this.issues = [];
@@ -284,7 +285,12 @@ export class App {
       shown += g.parts.length;
       const det = document.createElement("details");
       det.className = "palgroup";
-      det.open = true;
+      // Minimized by default; remembered across renders; force-open while searching.
+      det.open = !!q || this._paletteOpen.has(g.label);
+      det.addEventListener("toggle", () => {
+        if (det.open) this._paletteOpen.add(g.label);
+        else this._paletteOpen.delete(g.label);
+      });
       const sum = document.createElement("summary");
       sum.textContent = `${g.label} (${g.parts.length})`;
       det.appendChild(sum);
@@ -1265,7 +1271,10 @@ export class App {
   }
 
   _computeVersion(name) {
-    const clone = this.project.clone();
+    // Trim crops whatever is on screen (so "Solve -> Trim" keeps the Solve routing);
+    // the other tabs always recompute from the editable board.
+    const base = name === "trim" ? this._shownProject() : this.project;
+    const clone = base.clone();
     if (name === "trim") {
       const b = contentBounds(clone, LIBRARY);
       if (b) {
@@ -1538,9 +1547,13 @@ export class App {
     const rows = Number(document.getElementById("rows").value) || 26;
     this.project = new Project({ cols, rows });
     this.fileName = null;
+    // A new board invalidates every cached result tab.
+    this.versions = { solve: null, optimize: null, compact: null, trim: null };
+    this.active = "edit";
     this._syncSizeInputs();
     this.selected = null;
     this.pending = null;
+    this.jumperStart = null;
     this.solved = false;
     this.dirty = false;
     this.history.length = 0;
@@ -1647,8 +1660,13 @@ export class App {
     this.fileName = (file.name || "board").replace(/\.json$/i, "");
     document.getElementById("cols").value = this.project.cols;
     document.getElementById("rows").value = this.project.rows;
+    // A freshly opened board invalidates every cached result tab (Solve/Trim/...) and returns
+    // to the Edit tab, so a stale result from the previous board can never be shown.
+    this.versions = { solve: null, optimize: null, compact: null, trim: null };
+    this.active = "edit";
     this.selected = null;
     this.pending = null;
+    this.jumperStart = null;
     this.solved = false;
     this.dirty = false;
     this.history.length = 0;
