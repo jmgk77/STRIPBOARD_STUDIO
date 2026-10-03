@@ -18,6 +18,12 @@ const AUTOSAVE_KEY = "stripboard-studio:autosave";
 const SAVED_NAMES_KEY = "stripboard-studio:saved-names";
 const RECENT_PARTS_KEY = "stripboard-studio:recent-parts";
 
+// Shift a "x,y" cell key by (dx, dy).
+function shiftCell(key, dx, dy) {
+  const [x, y] = key.split(",").map(Number);
+  return `${x + dx},${y + dy}`;
+}
+
 // Palette grouping (U2): each non-custom part falls into the first group whose `kinds` match.
 const PALETTE_GROUPS = [
   { label: "Discretes", kinds: ["resistor", "capacitor", "led", "diode", "transistor"] },
@@ -1269,14 +1275,19 @@ export class App {
           c.x += dx;
           c.y += dy;
         }
-        clone.mountingHoles = new Set([...clone.mountingHoles].map((k) => {
-          const [x, y] = k.split(",").map(Number);
-          return `${x + dx},${y + dy}`;
+        // Trim crops the unused margins only: shift the existing routing, cuts and mounting
+        // holes by the same offset and never re-solve.
+        clone.cuts = new Set([...clone.cuts].map((k) => shiftCell(k, dx, dy)));
+        clone.fixedCuts = new Set([...clone.fixedCuts].map((k) => shiftCell(k, dx, dy)));
+        clone.removedCuts = new Set([...clone.removedCuts].map((k) => shiftCell(k, dx, dy)));
+        clone.mountingHoles = new Set([...clone.mountingHoles].map((k) => shiftCell(k, dx, dy)));
+        clone.jumpers = clone.jumpers.map((j) => ({ ...j, x: j.x + dx, ya: j.ya + dy, yb: j.yb + dy }));
+        clone.removedJumpers = new Set([...clone.removedJumpers].map((k) => {
+          const [x, ya, yb] = k.split(",").map(Number);
+          return `${x + dx},${ya + dy},${yb + dy}`;
         }));
         clone.cols = b.x1 - b.x0 + 1;
         clone.rows = b.y1 - b.y0 + 1;
-        clone.cuts = new Set();
-        clone.jumpers = [];
       }
       return clone;
     }
