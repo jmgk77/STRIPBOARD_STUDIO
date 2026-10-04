@@ -90,6 +90,10 @@ export class App {
     this.showConnections = false; // force the ratsnest on even after a board has routing
     this.showMountZones = true; // hatch cells where a mounting hole would not affect any net (on by default)
     this.allowDiagonal = false; // router option (F10): let jumpers span two columns
+    this.zoom = 1; // board zoom (1 = fit)
+    this.pan = { x: 0, y: 0 }; // top-left of the visible viewBox, in board units
+    this._panDrag = null;
+    this._spaceDown = false;
     this.selectedNet = null;
     this.selectedWire = null;
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
@@ -187,6 +191,7 @@ export class App {
     const state = this._boardState(project);
     if (this.schematic) renderSchematic(this.svg, state);
     else render(this.svg, state);
+    this._applyViewBox(); // preserve zoom/pan across redraws (scene sets the full viewBox)
   }
 
   render() {
@@ -2278,6 +2283,52 @@ ${blocks.join("\n")}
     return this._cellFromPoint(this._svgPoint(evt));
   }
 
+  // -- zoom / pan (viewBox transform; interactions use getScreenCTM so they stay correct) --
+
+  _viewBase() {
+    const p = this._shownProject();
+    return { width: p.cols * CELL + PAD * 2, height: p.rows * CELL + PAD * 2 + 48 };
+  }
+
+  _clampView() {
+    const { width, height } = this._viewBase();
+    const vw = width / this.zoom;
+    const vh = height / this.zoom;
+    this.pan.x = Math.max(0, Math.min(width - vw, this.pan.x));
+    this.pan.y = Math.max(0, Math.min(height - vh, this.pan.y));
+  }
+
+  _applyViewBox() {
+    const { width, height } = this._viewBase();
+    this._clampView();
+    const vw = width / this.zoom;
+    const vh = height / this.zoom;
+    this.svg.setAttribute("viewBox", `${this.pan.x} ${this.pan.y} ${vw} ${vh}`);
+    const pct = document.getElementById("zoomPct");
+    if (pct) pct.textContent = `${Math.round(this.zoom * 100)}%`;
+  }
+
+  zoomBy(factor, anchor) {
+    const { width, height } = this._viewBase();
+    const oldW = width / this.zoom;
+    const oldH = height / this.zoom;
+    const z2 = Math.max(0.4, Math.min(8, this.zoom * factor));
+    if (z2 === this.zoom) return;
+    const a = anchor ?? { x: this.pan.x + oldW / 2, y: this.pan.y + oldH / 2 };
+    const fx = (a.x - this.pan.x) / oldW;
+    const fy = (a.y - this.pan.y) / oldH;
+    this.zoom = z2;
+    this.pan.x = a.x - fx * (width / this.zoom);
+    this.pan.y = a.y - fy * (height / this.zoom);
+    this._applyViewBox();
+  }
+
+  zoomFit() {
+    this.zoom = 1;
+    this.pan = { x: 0, y: 0 };
+    this._applyViewBox();
+  }
+
   _selectedRefs() {
     return [...this.selection];
   }
@@ -2328,6 +2379,12 @@ ${blocks.join("\n")}
       if (active && ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName)) active.blur();
       evt.preventDefault(); // stop text selection while dragging on the board
       const editing = this._canEdit();
+      // Middle-button (or Space+left) drag pans the view instead of selecting/dragging.
+      if (evt.button === 1 || (this._spaceDown && evt.button === 0)) {
+        this._panDrag = { x: evt.clientX, y: evt.clientY };
+        this.svg.setPointerCapture(evt.pointerId);
+        return;
+      }
 
       const netEl = evt.target.closest("[data-net]");
       if (netEl) {
@@ -2476,6 +2533,16 @@ ${blocks.join("\n")}
     });
 
     this.svg.addEventListener("pointermove", (evt) => {
+      if (this._panDrag) {
+        const rect = this.svg.getBoundingClientRect();
+        const basePerPx = this._viewBase().width / this.zoom / (rect.width || 1);
+        this.pan.x -= (evt.clientX - this._panDrag.x) * basePerPx;
+        this.pan.y -= (evt.clientY - this._panDrag.y) * basePerPx;
+        this._panDrag.x = evt.clientX;
+        this._panDrag.y = evt.clientY;
+        this._applyViewBox();
+        return;
+      }
       if (this.marquee) {
         const p = this._svgPoint(evt);
         this.marquee.x1 = p.x;
@@ -2566,6 +2633,10 @@ ${blocks.join("\n")}
     });
 
     this.svg.addEventListener("pointerup", () => {
+      if (this._panDrag) {
+        this._panDrag = null;
+        return;
+      }
       if (this.marquee) {
         const m = this.marquee;
         this.marquee = null;
@@ -2631,6 +2702,18 @@ ${blocks.join("\n")}
       this.pushHistory(before);
       this._afterStructuralChange();
     });
+
+    this.svg.addEventListener(
+      "wheel",
+      (evt) => {
+        evt.preventDefault();
+        this.zoomBy(evt.deltaY < 0 ? 1.15 : 1 / 1.15, this._svgPoint(evt));
+      },
+      { passive: false },
+    );
+    document.getElementById("zoomIn").addEventListener("click", () => this.zoomBy(1.25));
+    document.getElementById("zoomOut").addEventListener("click", () => this.zoomBy(1 / 1.25));
+    document.getElementById("zoomFit").addEventListener("click", () => this.zoomFit());
   }
 
   _clearSelection() {
@@ -2668,6 +2751,15 @@ ${blocks.join("\n")}
       const key = evt.key;
       const lower = key.length === 1 ? key.toLowerCase() : key;
       const mod = evt.ctrlKey || evt.metaKey;
+      // View controls work in any tab (they don't edit): Space pans, +/-/0 zoom.
+      if (key === " ") {
+        this._spaceDown = true;
+        evt.preventDefault();
+        return;
+      }
+      if (!mod && (key === "+" || key === "=")) return evt.preventDefault(), this.zoomBy(1.2);
+      if (!mod && (key === "-" || key === "_")) return evt.preventDefault(), this.zoomBy(1 / 1.2);
+      if (!mod && key === "0") return evt.preventDefault(), this.zoomFit();
       if (!this._canEdit() && key !== "Escape" && lower !== "v") return; // read-only tab
       if (mod) {
         if (evt.shiftKey) {
@@ -2695,6 +2787,9 @@ ${blocks.join("\n")}
       if (lower === "r") return this.rotateSelected(evt.shiftKey ? -1 : 1);
       if (lower === "l") return this.lockSelected();
       if (lower === "g") return evt.shiftKey ? this._removeFromGroup() : this._addToGroup();
+    });
+    document.addEventListener("keyup", (evt) => {
+      if (evt.key === " ") this._spaceDown = false;
     });
   }
 

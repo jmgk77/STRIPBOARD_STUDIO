@@ -63,6 +63,18 @@ test("G adds the whole selection to one group", (t) => {
   assert.equal(app.project.components.get(b).group, "G1");
 });
 
+test("zoom/pan updates the SVG viewBox", (t) => {
+  const app = makeApp(t);
+  const { width, height } = app._viewBase();
+  app.zoomFit();
+  assert.equal(app.svg.getAttribute("viewBox"), `0 0 ${width} ${height}`);
+  app.zoomBy(2); // about the centre
+  const vb = app.svg.getAttribute("viewBox").split(" ").map(Number);
+  assert.ok(Math.abs(vb[2] - width / 2) < 1e-6, `visible width ${vb[2]}`);
+  assert.ok(Math.abs(vb[3] - height / 2) < 1e-6);
+  assert.equal(dom.getElementById("zoomPct").textContent, "200%");
+});
+
 test("undo history is capped", (t) => {
   const app = makeApp(t);
   for (let i = 0; i < 130; i++) app.pushHistory(JSON.stringify(app.project.toJSON()));
