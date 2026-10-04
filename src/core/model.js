@@ -154,6 +154,23 @@ export class Project {
     return `N${n}`;
   }
 
+  /** Move `pins` out of net `netId` into a brand-new net. Returns the new Net, or null. */
+  splitNet(netId, pins) {
+    const net = this.nets.find((n) => n.id === netId);
+    if (!net) return null;
+    const move = [...pins].filter((k) => net.pins.has(k));
+    if (!move.length) return null;
+    const id = this.uniqueNetId(); // before any empty-net cleanup
+    const created = new Net(id);
+    for (const k of move) {
+      net.pins.delete(k);
+      created.pins.add(k);
+    }
+    this.nets.push(created);
+    this.nets = this.nets.filter((n) => n === created || n.pins.size > 0);
+    return created;
+  }
+
   /** Deep copy (used for undo snapshots). */
   clone() {
     return Project.fromJSON(this.toJSON());

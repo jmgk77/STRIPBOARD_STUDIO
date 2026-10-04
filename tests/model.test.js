@@ -3,6 +3,28 @@ import assert from "node:assert/strict";
 
 import { Project, Component, Net, pinKey, pinLabel } from "../src/core/model.js";
 
+test("splitNet moves pins out into a new net; connect merges them back", () => {
+  const p = new Project();
+  p.nets = [new Net("N1", [pinKey("J1", "1"), pinKey("J1", "2"), pinKey("J1", "3")])];
+  const created = p.splitNet("N1", [pinKey("J1", "2")]);
+  assert.ok(created);
+  assert.deepEqual([...created.pins], [pinKey("J1", "2")]);
+  assert.deepEqual([...p.nets.find((n) => n.id === "N1").pins].sort(), [pinKey("J1", "1"), pinKey("J1", "3")]);
+  const merged = p.connect([...p.nets.find((n) => n.id === "N1").pins, ...created.pins], "N1");
+  assert.equal(merged.id, "N1");
+  assert.deepEqual([...merged.pins].sort(), [pinKey("J1", "1"), pinKey("J1", "2"), pinKey("J1", "3")]);
+  assert.equal(p.nets.length, 1);
+});
+
+test("splitNet removes the source net when it becomes empty", () => {
+  const p = new Project();
+  p.nets = [new Net("N1", ["A.1"])];
+  const created = p.splitNet("N1", ["A.1"]);
+  assert.ok(created);
+  assert.equal(p.nets.length, 1);
+  assert.equal(p.nets[0], created);
+});
+
 test("connect merges existing nets and keeps the first id", () => {
   const p = new Project();
   p.addComponent(new Component({ ref: "J1", part: "header2" }));

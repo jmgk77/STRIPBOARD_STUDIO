@@ -81,7 +81,7 @@ export class App {
     this.solved = false;
     this.showNames = true;
     this.showConnections = false; // force the ratsnest on even after a board has routing
-    this.showMountZones = false; // hatch cells where a mounting hole would not affect any net
+    this.showMountZones = true; // hatch cells where a mounting hole would not affect any net (on by default)
     this.selectedNet = null;
     this.selectedWire = null;
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
@@ -885,6 +885,19 @@ export class App {
       const chip = document.createElement("span");
       chip.className = "chip";
       chip.appendChild(document.createTextNode(pinLabel(project, key)));
+      const sc = document.createElement("button");
+      sc.className = "chipx";
+      sc.textContent = "✂";
+      sc.title = "split this pin into a new net";
+      sc.disabled = !ed;
+      sc.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.snapshot();
+        const created = this.project.splitNet(net.id, [key]);
+        if (created) this._status(`split ${pinLabel(project, key)} into ${created.id}`);
+        this._afterStructuralChange(true);
+      });
+      chip.appendChild(sc);
       const x = document.createElement("button");
       x.className = "chipx";
       x.textContent = "✕";
@@ -901,6 +914,62 @@ export class App {
       pins.appendChild(chip);
     }
     box.appendChild(pins);
+
+    // Split the selected component(s)' pins out of this net into a new one.
+    if (this.selection.size) {
+      const compRefs = this._selectedRefs();
+      const mine = [...net.pins].filter((k) => compRefs.includes(splitPin(k).ref));
+      if (mine.length) {
+        const srow = document.createElement("div");
+        srow.className = "pinrow";
+        const sbtn = document.createElement("button");
+        sbtn.className = "minibtn";
+        sbtn.textContent = `Split ${mine.length} pin(s) of selection`;
+        sbtn.title = "move the selected parts' pins here into a new net";
+        sbtn.disabled = !ed;
+        sbtn.addEventListener("click", () => {
+          this.snapshot();
+          const created = this.project.splitNet(net.id, mine);
+          if (created) this._status(`split ${mine.length} pin(s) into ${created.id}`);
+          this._afterStructuralChange(true);
+        });
+        srow.appendChild(sbtn);
+        box.appendChild(srow);
+      }
+    }
+
+    // Merge this net into another (join their pins).
+    const others = this.project.nets.filter((n) => n !== net);
+    if (others.length) {
+      const mrow = document.createElement("div");
+      mrow.className = "pinrow";
+      const sel = document.createElement("select");
+      sel.disabled = !ed;
+      for (const o of others) {
+        const opt = document.createElement("option");
+        opt.value = o.id;
+        opt.textContent = o.label || o.id;
+        sel.appendChild(opt);
+      }
+      const mbtn = document.createElement("button");
+      mbtn.className = "minibtn";
+      mbtn.textContent = "Merge into";
+      mbtn.title = "join this net with the chosen one";
+      mbtn.disabled = !ed;
+      mbtn.addEventListener("click", () => {
+        const target = this.project.nets.find((n) => n.id === sel.value);
+        if (!target) return;
+        this.snapshot();
+        const merged = this.project.connect([...net.pins, ...target.pins], target.id);
+        this.selectedNet = merged.id;
+        this.selectedWire = null;
+        this._afterStructuralChange(true);
+        this._status(`merged into "${target.label || target.id}"`);
+      });
+      mrow.appendChild(sel);
+      mrow.appendChild(mbtn);
+      box.appendChild(mrow);
+    }
 
     const row = document.createElement("div");
     row.className = "pinrow";
