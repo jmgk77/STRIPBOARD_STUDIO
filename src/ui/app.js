@@ -238,7 +238,7 @@ export class App {
     // Restore the exact dirty flag that was persisted, so a board the user saved does not
     // trigger an unload prompt just because it came back from autosave.
     this.dirty = data.dirty === true;
-    if (this.dirty) this._status("recovered unsaved work from this browser");
+    if (this.dirty) this._status(t("status.recovered"));
   }
 
   _persistAutosave() {
@@ -273,7 +273,7 @@ export class App {
 
   _confirmDiscard() {
     if (!this.dirty) return true;
-    return window.confirm("You have unsaved changes. Discard them?");
+    return window.confirm(t("confirm.discard"));
   }
 
   _loadRecent() {
@@ -300,7 +300,7 @@ export class App {
     const label = document.createElement("span");
     label.className = "grow";
     label.textContent = part.label;
-    label.title = "click to add";
+    label.title = t("ui.clickToAdd");
     label.addEventListener("click", () => this.addPart(part.name));
     item.appendChild(label);
     if (isCustom) {
@@ -308,7 +308,7 @@ export class App {
       const edit = document.createElement("button");
       edit.className = "minibtn";
       edit.textContent = "✎";
-      edit.title = "edit this pin bar";
+      edit.title = t("ui.editPinBar");
       edit.addEventListener("click", (e) => {
         e.stopPropagation();
         this.openEditPart(spec);
@@ -316,7 +316,7 @@ export class App {
       const del = document.createElement("button");
       del.className = "minibtn";
       del.textContent = "✕";
-      del.title = "delete this pin bar";
+      del.title = t("ui.deletePinBar");
       del.addEventListener("click", (e) => {
         e.stopPropagation();
         this.deletePart(part.name);
@@ -413,7 +413,7 @@ export class App {
       const del = document.createElement("button");
       del.className = "minibtn";
       del.textContent = "✕";
-      del.title = "delete this net";
+      del.title = t("ui.deleteNet");
       del.disabled = !ed;
       del.addEventListener("click", () => {
         this.snapshot();
@@ -432,7 +432,7 @@ export class App {
         const ref = splitPin(key).ref;
         const chip = document.createElement("span");
         chip.className = "chip" + (ref === this.selected || focus.has(net.id) ? " sel" : "");
-        chip.title = "click to select this component";
+        chip.title = t("ui.selectComponent");
         chip.appendChild(document.createTextNode(pinLabel(project, key)));
         chip.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -446,7 +446,7 @@ export class App {
         const x = document.createElement("button");
         x.className = "chipx";
         x.textContent = "✕";
-        x.title = "remove this pin from the net";
+        x.title = t("ui.removePin");
         x.disabled = !ed;
         x.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -474,6 +474,35 @@ export class App {
     }
   }
 
+  /** Localised text for a DRC issue: translate by `code` (falling back to the core message). */
+  _issueText(issue) {
+    const proj = this._shownProject();
+    const netName = (id) => {
+      const n = proj.nets.find((x) => x.id === id);
+      return n?.label || id;
+    };
+    const params = {
+      pos: issue.pos,
+      pos2: issue.pos2,
+      ref: issue.ref,
+      pin: issue.pin,
+      part: issue.part,
+      n: issue.regions ?? issue.n,
+      sample: issue.sample,
+      net: netName(issue.netId),
+      netA: netName(issue.netIds?.[0]),
+      netB: netName(issue.netIds?.[1]),
+      refA: issue.refs?.[0],
+      refB: issue.refs?.[1],
+      row: issue.row,
+      colA: issue.colA,
+      colB: issue.colB,
+    };
+    const key = `issue.${issue.code}`;
+    const s = t(key, params);
+    return s === key ? issue.message : s;
+  }
+
   _renderProblems() {
     const box = document.getElementById("problems");
     box.innerHTML = "";
@@ -488,8 +517,8 @@ export class App {
       pill.className = `pill ${issue.level === "error" ? "error" : "warn"}`;
       pill.textContent = t(`level.${issue.level}`);
       item.appendChild(pill);
-      item.appendChild(document.createTextNode(" " + issue.message));
-      item.title = "click to highlight";
+      item.appendChild(document.createTextNode(" " + this._issueText(issue)));
+      item.title = t("ui.highlight");
       item.addEventListener("click", () => {
         const netId = issue.netId ?? issue.netIds?.[0] ?? null;
         const ref = issue.ref ?? issue.refs?.[0] ?? null;
@@ -532,9 +561,9 @@ export class App {
           const b = `${ex}${rowLabel(j.yb, project.rows)}`;
           const len = Math.hypot(ex - j.x, j.yb - j.ya).toFixed(2);
           this._wireBox(box, `${t(j.x2 !== undefined ? "prop.jumperDiag" : "prop.jumper")} · ${a}-${b}`, [
-            `net: ${net ? net.label || net.id : t("prop.none")}`,
-            `length: ${len} holes`,
-            `state: ${t(j.fixed ? "prop.fixed" : "prop.auto")}`,
+            t("prop.net", { net: net ? net.label || net.id : t("prop.none") }),
+            t("prop.length", { n: len }),
+            t("prop.state", { s: t(j.fixed ? "prop.fixed" : "prop.auto") }),
           ], !!j.fixed, ed);
           return;
         }
@@ -543,16 +572,16 @@ export class App {
         const [x, y] = this.selectedWire.key.split(",").map(Number);
         const fixed = project.fixedCuts?.has(this.selectedWire.key);
         this._wireBox(box, `${t("prop.cut")} · ${rowLabel(y, project.rows)}${x}`, [
-          "breaks the strip on this row",
-          `state: ${t(fixed ? "prop.fixed" : "prop.auto")}`,
+          t("prop.breaksStrip"),
+          t("prop.state", { s: t(fixed ? "prop.fixed" : "prop.auto") }),
         ], !!fixed, ed);
         return;
       }
       if (this.selectedWire?.kind === "mount") {
         const [x, y] = this.selectedWire.key.split(",").map(Number);
         this._wireBox(box, `${t("prop.mount")} · ${rowLabel(y, project.rows)}${x}`, [
-          `drill Ø${project.mountDiameter} mm (through-hole)`,
-          "the strip is cut here (no copper)",
+          t("prop.drill", { d: project.mountDiameter }),
+          t("prop.stripCut"),
         ], false, ed, false);
         return;
       }
@@ -577,7 +606,7 @@ export class App {
     const refInput = document.createElement("input");
     refInput.type = "text";
     refInput.value = comp.ref;
-    refInput.placeholder = "name";
+    refInput.placeholder = t("prop.refName");
     refInput.disabled = !ed;
     refInput.addEventListener("focus", (e) => {
       this._editBefore.set(e.target, JSON.stringify(this.project.toJSON()));
@@ -589,7 +618,7 @@ export class App {
 
     const meta = document.createElement("div");
     meta.className = "muted";
-    const lock = comp.locked ? "locked" : "free";
+    const lock = t(comp.locked ? "prop.locked" : "prop.free");
     meta.textContent = `${part?.label ?? comp.part} — rot ${comp.rot}° — ${lock}`;
     box.appendChild(meta);
 
@@ -645,8 +674,8 @@ export class App {
     const groupInput = document.createElement("input");
     groupInput.type = "text";
     groupInput.value = comp.group || "";
-    groupInput.placeholder = "(ungrouped)";
-    groupInput.title = "parts with the same group name stay rigidly together";
+    groupInput.placeholder = t("prop.ungrouped");
+    groupInput.title = t("prop.groupTitle");
     groupInput.disabled = !ed;
     groupInput.addEventListener("focus", (e) => {
       this._editBefore.set(e.target, JSON.stringify(this.project.toJSON()));
@@ -667,7 +696,7 @@ export class App {
       row.className = "pinrow";
       const tag = document.createElement("span");
       tag.className = "pintag";
-      tag.textContent = "span";
+      tag.textContent = t("prop.span");
       const input = document.createElement("input");
       input.type = "number";
       input.min = String(part.bendable.min);
@@ -687,7 +716,7 @@ export class App {
 
     const hint = document.createElement("div");
     hint.className = "muted";
-    hint.textContent = "pin names (blank = use the pin id):";
+    hint.textContent = t("prop.pinNamesHint");
     box.appendChild(hint);
 
     const list = document.createElement("div");
@@ -729,7 +758,7 @@ export class App {
         const off = document.createElement("button");
         off.className = "minibtn";
         off.textContent = "✕";
-        off.title = "disconnect this pin";
+        off.title = t("prop.disconnect");
         off.disabled = !ed;
         off.addEventListener("click", () => {
           this.snapshot();
@@ -831,7 +860,7 @@ export class App {
       return;
     }
     if (next.includes(".") || this.project.components.has(next)) {
-      this._status(next.includes(".") ? "name cannot contain '.'" : `name ${next} is already used`);
+      this._status(next.includes(".") ? t("status.nameDot") : t("status.nameUsed", { name: next }));
       input.value = comp.ref;
       return;
     }
@@ -843,7 +872,7 @@ export class App {
     this.selection = new Set([next]);
     this.selected = next;
     this.render();
-    this._status(`renamed ${old} to ${next}`);
+    this._status(t("status.renamed", { old, next }));
   }
 
   /** Properties view when several parts are selected: bulk actions. */
@@ -913,20 +942,20 @@ export class App {
       const sc = document.createElement("button");
       sc.className = "chipx";
       sc.textContent = "✂";
-      sc.title = "split this pin into a new net";
+      sc.title = t("prop.splitPinTitle");
       sc.disabled = !ed;
       sc.addEventListener("click", (e) => {
         e.stopPropagation();
         this.snapshot();
         const created = this.project.splitNet(net.id, [key]);
-        if (created) this._status(`split ${pinLabel(project, key)} into ${created.id}`);
+        if (created) this._status(t("status.splitPin", { pin: pinLabel(project, key), net: created.id }));
         this._afterStructuralChange(true);
       });
       chip.appendChild(sc);
       const x = document.createElement("button");
       x.className = "chipx";
       x.textContent = "✕";
-      x.title = "remove this pin from the net";
+      x.title = t("ui.removePin");
       x.disabled = !ed;
       x.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -950,12 +979,12 @@ export class App {
         const sbtn = document.createElement("button");
         sbtn.className = "minibtn";
         sbtn.textContent = t("prop.splitSelection", { n: mine.length });
-        sbtn.title = "move the selected parts' pins here into a new net";
+        sbtn.title = t("prop.movePins");
         sbtn.disabled = !ed;
         sbtn.addEventListener("click", () => {
           this.snapshot();
           const created = this.project.splitNet(net.id, mine);
-          if (created) this._status(`split ${mine.length} pin(s) into ${created.id}`);
+          if (created) this._status(t("status.splitPins", { n: mine.length, net: created.id }));
           this._afterStructuralChange(true);
         });
         srow.appendChild(sbtn);
@@ -979,7 +1008,7 @@ export class App {
       const mbtn = document.createElement("button");
       mbtn.className = "minibtn";
       mbtn.textContent = t("prop.mergeInto");
-      mbtn.title = "join this net with the chosen one";
+      mbtn.title = t("prop.mergeTitle");
       mbtn.disabled = !ed;
       mbtn.addEventListener("click", () => {
         const target = this.project.nets.find((n) => n.id === sel.value);
@@ -989,7 +1018,7 @@ export class App {
         this.selectedNet = merged.id;
         this.selectedWire = null;
         this._afterStructuralChange(true);
-        this._status(`merged into "${target.label || target.id}"`);
+        this._status(t("status.merged", { net: target.label || target.id }));
       });
       mrow.appendChild(sel);
       mrow.appendChild(mbtn);
@@ -1074,14 +1103,14 @@ export class App {
   deletePart(name) {
     if (!this._guard()) return;
     if ([...this.project.components.values()].some((c) => c.part === name)) {
-      this._status(`cannot delete ${name}: a component still uses it`);
+      this._status(t("status.cannotDelete", { name }));
       return;
     }
     this.snapshot();
     this.project.customParts = this.project.customParts.filter((s) => s.name !== name);
     LIBRARY.delete(name);
     this.render();
-    this._status(`deleted ${name}`);
+    this._status(t("status.deleted", { name }));
   }
 
   updatePartForm() {
@@ -1108,7 +1137,7 @@ export class App {
       this._editingPart = null;
       document.getElementById("partDlg").close();
       this.render();
-      this._status(`updated ${label}`);
+      this._status(t("status.updatedPart", { label }));
       return;
     }
     const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bar";
@@ -1122,7 +1151,7 @@ export class App {
     this.project.customParts.push(spec);
     document.getElementById("partDlg").close();
     this.render();
-    this._status(`created ${label} (${count} ${doubleRow ? "x2" : ""} pins)`);
+    this._status(t("status.createdPart", { label, count, dbl: doubleRow ? " x2" : "" }));
   }
 
   rotateSelected(dir = 1) {
@@ -1186,7 +1215,7 @@ export class App {
     if (!this._guard()) return;
     const comps = this._selectedComps();
     if (!comps.length) {
-      this._status("select a part to duplicate");
+      this._status(t("status.selectDup"));
       return;
     }
     this.snapshot();
@@ -1213,7 +1242,7 @@ export class App {
     this.selection = new Set(newRefs);
     this.selected = newRefs[0] ?? null;
     this._afterStructuralChange();
-    this._status(`duplicated ${comps.length} part(s)`);
+    this._status(t("status.duplicated", { n: comps.length }));
   }
 
   deleteSelected() {
@@ -1275,7 +1304,7 @@ export class App {
       fixed = true;
     }
     this._afterStructuralChange(false);
-    this._status(fixed ? "fixed (Solve keeps it)" : "released (Solve may change it)");
+    this._status(fixed ? t("status.fixedKeep") : t("status.releasedChange"));
   }
 
   setMode(mode) {
@@ -1285,10 +1314,10 @@ export class App {
     if (mode !== "jumper") this.jumperStart = null;
     this._syncModeButtons();
     this.render();
-    if (mode === "connect") this._status("connect: click a first pin, then a second pin (Esc cancels)");
-    else if (mode === "cut") this._status("cut tool: click a hole to cut that strip; click it again to remove the cut");
-    else if (mode === "jumper") this._status("jumper tool: click a hole, then another in the same column (Esc cancels)");
-    else if (mode === "mount") this._status("mount tool: click a hole to place a chassis screw hole; click it again to remove it");
+    if (mode === "connect") this._status(t("status.connectPrompt"));
+    else if (mode === "cut") this._status(t("status.cutPrompt"));
+    else if (mode === "jumper") this._status(t("status.jumperPrompt"));
+    else if (mode === "mount") this._status(t("status.mountPrompt"));
   }
 
   _syncModeButtons() {
@@ -1342,20 +1371,20 @@ export class App {
     if (!this._guard()) return;
     const comps = this._selectedComps();
     if (!comps.length) {
-      this._status("select part(s) first, then press G");
+      this._status(t("status.selectFirst"));
       return;
     }
     // A single already-grouped part just becomes the active group (for subsequent additions).
     if (comps.length === 1 && comps[0].group) {
       this.activeGroup = comps[0].group;
-      this._status(`active group: "${comps[0].group}" — select parts and press G to add them`);
+      this._status(t("status.activeGroup", { g: comps[0].group }));
       return;
     }
     if (!this.activeGroup) this.activeGroup = this._newGroupName();
     this.snapshot();
     for (const comp of comps) comp.group = this.activeGroup;
     this._afterStructuralChange(false);
-    this._status(`added ${comps.length} part(s) to group "${this.activeGroup}"`);
+    this._status(t("status.groupAdded", { n: comps.length, g: this.activeGroup }));
   }
 
   /** `Shift+G`: remove the selected part(s) from their group. */
@@ -1363,7 +1392,7 @@ export class App {
     if (!this._guard()) return;
     const comps = this._selectedComps().filter((c) => c.group);
     if (!comps.length) {
-      this._status("no selected part is in a group");
+      this._status(t("status.noGroup"));
       return;
     }
     this.snapshot();
@@ -1376,7 +1405,7 @@ export class App {
       if (this._groupMembers(name).length === 0 && this.activeGroup === name) this.activeGroup = null;
     }
     this._afterStructuralChange(false);
-    this._status(`removed ${comps.length} part(s) from their group`);
+    this._status(t("status.groupRemoved", { n: comps.length }));
   }
 
   /** Cell under the pointer, or null when the click lands off the board. */
@@ -1404,12 +1433,12 @@ export class App {
       this.project.fixedCuts.delete(key);
       this.project.removedCuts.add(key);
       this._afterStructuralChange(false);
-      this._status(`cut removed at ${name}`);
+      this._status(t("status.cutRemoved", { name }));
       return;
     }
     const pin = this._pinAt(x, y);
     if (pin) {
-      this._status(`cannot cut ${name}: ${pin} sits there`);
+      this._status(t("status.cannotCut", { name, pin }));
       return;
     }
     this.snapshot();
@@ -1417,7 +1446,7 @@ export class App {
     this.project.fixedCuts.add(key); // a hand-placed cut is fixed: Solve keeps it
     this.project.removedCuts.delete(key);
     this._afterStructuralChange(false);
-    this._status(`cut added at ${name} (fixed)`);
+    this._status(t("status.cutAdded", { name }));
   }
 
   _toggleMount(x, y) {
@@ -1428,18 +1457,18 @@ export class App {
       this.project.mountingHoles.delete(key);
       // A hole breaks (or restores) copper, so any existing routing is now stale.
       this._afterStructuralChange(true);
-      this._status(`mounting hole removed at ${name} — re-run Solve`);
+      this._status(t("status.mountRemoved", { name }));
       return;
     }
     const bad = this._mountBlocker(x, y);
     if (bad) {
-      this._status(`cannot place mounting hole: ${bad}`);
+      this._status(t("status.cannotMount", { bad }));
       return;
     }
     this.snapshot();
     this.project.mountingHoles.add(key);
     this._afterStructuralChange(true);
-    this._status(`mounting hole added at ${name} — re-run Solve`);
+    this._status(t("status.mountAdded", { name }));
   }
 
   _mountBlocker(x, y) {
@@ -1463,17 +1492,17 @@ export class App {
     const name = this._cellName(x, y);
     if (!this.jumperStart) {
       if (this._pinAt(x, y)) {
-        this._status(`a jumper cannot end on ${name}: a pin is there`);
+        this._status(t("status.jumperEndPin", { name }));
         return;
       }
       this.jumperStart = { x, y };
       this.render();
-      this._status(`jumper: click the other hole in column ${x} (Esc cancels)`);
+      this._status(t("status.jumperFirst", { x }));
       return;
     }
     const { x: x0, y: y0 } = this.jumperStart;
     if (x !== x0) {
-      this._status("a jumper is a vertical wire — pick a hole in the same column");
+      this._status(t("status.jumperNotVertical"));
       return;
     }
     const lo = Math.min(y0, y);
@@ -1485,7 +1514,7 @@ export class App {
     }
     const bad = this._jumperBlocker(x, lo, hi);
     if (bad) {
-      this._status(`cannot add jumper: ${bad}`);
+      this._status(t("status.cannotJumper", { bad }));
       return;
     }
     this.snapshot();
@@ -1496,7 +1525,7 @@ export class App {
     this.jumperStart = null;
     this._syncModeButtons();
     this._afterStructuralChange(false);
-    this._status(`jumper added ${this._cellName(x, lo)}-${this._cellName(x, hi)} (fixed) — back to Select`);
+    this._status(t("status.jumperAdded", { a: this._cellName(x, lo), b: this._cellName(x, hi) }));
   }
 
   /** Mirror the router/DRC keepouts so a hand-drawn jumper is physically sane. */
@@ -1536,7 +1565,7 @@ export class App {
         this.snapshot();
         this.project.assignPin(key, net.id);
         this._afterStructuralChange(true);
-        this._status(`added ${pinLabel(this.project, key)} to ${net.label || net.id}`);
+        this._status(t("status.netAdded", { pin: pinLabel(this.project, key), net: net.label || net.id }));
       }
       return;
     }
@@ -1566,7 +1595,7 @@ export class App {
 
   _guard() {
     if (this._canEdit()) return true;
-    this._status("read-only result tab — click 'Use this' (top right) to edit");
+    this._status(t("status.readonly"));
     return false;
   }
 
@@ -1595,7 +1624,7 @@ export class App {
   async openSizeSearch() {
     if (!this._guard()) return;
     if (this._busy) {
-      this._status("busy — wait for the current computation");
+      this._status(t("status.busy"));
       return;
     }
     const body = document.getElementById("sizeBody");
@@ -1705,13 +1734,14 @@ export class App {
     this._syncSizeInputs();
     this._recomputeIssues();
     this.render();
-    this._status(`applied ${board.cols}×${board.rows} board (Ctrl+Z undoes it)`);
+    this._status(t("status.applySize", { w: board.cols, h: board.rows }));
   }
 
   switchTab(name) {
     if (this._busy) return; // one compute at a time
+    const label = name === "optimize" ? t("vtab.balanced") : t(`vtab.${name}`);
     if (name !== "edit" && !this.versions[name]) {
-      this._runBusy(`Computing ${name}…`, async () => {
+      this._runBusy(t("status.computing", { name: label }), async () => {
         this.versions[name] = await this._computeVersion(name);
         this.active = name;
         this.selected = null;
@@ -1719,7 +1749,7 @@ export class App {
         this.selectedWire = null;
         this.selectedNet = null;
         this.render();
-        this._status(`${name} ready — 'Use this' to make the edit board`);
+        this._status(t("status.ready", { name: label }));
       });
       return;
     }
@@ -1729,7 +1759,7 @@ export class App {
     this.selectedWire = null;
     this.selectedNet = null;
     this.render();
-    if (name !== "edit") this._status(`${name} (cached) — 'Use this' to make it the edit board`);
+    if (name !== "edit") this._status(t("status.cached", { name: label }));
   }
 
   async _computeVersion(name) {
@@ -1773,7 +1803,7 @@ export class App {
     this._syncSizeInputs();
     this._recomputeIssues();
     this.render();
-    this._status("result copied to the edit board (Ctrl+Z undoes it)");
+    this._status(t("status.resultCopied"));
   }
 
   _updateTabUI() {
@@ -1804,7 +1834,7 @@ export class App {
   openPrintDialog() {
     const project = this._shownProject();
     if (project.components.size === 0 && !this._solvedShown()) {
-      this._status("nothing to print yet — add parts or run Solve first");
+      this._status(t("status.nothingToPrint"));
       return;
     }
     document.getElementById("printOrigin").value = this._printOrigin || "A1";
@@ -1832,7 +1862,7 @@ export class App {
       steps: want("pc-steps"),
     };
     if (!Object.values(sections).some(Boolean)) {
-      this._status("pick at least one section to print");
+      this._status(t("status.pickSection"));
       return;
     }
 
@@ -1934,7 +1964,7 @@ export class App {
 
     const win = window.open("", "_blank");
     if (!win) {
-      this._status("allow pop-ups to print");
+      this._status(t("status.allowPopups"));
       return;
     }
     win.document.write(`<!doctype html><html><head><title>${project.title} — print 1:1</title>
@@ -1946,13 +1976,13 @@ ${blocks.join("\n")}
     win.focus();
     win.print();
     document.getElementById("printDlg").close();
-    this._status("print window opened (print at 100% / Save as PDF)");
+    this._status(t("status.printOpened"));
   }
 
   showAscii() {
     const project = this._shownProject();
     if (project.components.size === 0) {
-      this._status("nothing to export — add some parts first");
+      this._status(t("status.nothingExportParts"));
       return;
     }
     const pre = document.getElementById("asciiText");
@@ -1975,15 +2005,15 @@ ${blocks.join("\n")}
       this._select(pre);
       try {
         const ok = document.execCommand("copy");
-        this._status(ok ? `${label} copied` : "text selected — press Ctrl+C");
+        this._status(ok ? t("status.copied", { label }) : t("status.textSelected"));
       } catch {
-        this._status("text selected — press Ctrl+C");
+        this._status(t("status.textSelected"));
       }
     };
     if (navigator.clipboard?.writeText) {
       navigator.clipboard
         .writeText(pre.textContent)
-        .then(() => this._status(`${label} copied`))
+        .then(() => this._status(t("status.copied", { label })))
         .catch(fallback);
     } else {
       fallback();
@@ -1993,7 +2023,7 @@ ${blocks.join("\n")}
   showNetlist() {
     const project = this._shownProject();
     if (project.components.size === 0 || project.nets.length === 0) {
-      this._status("nothing to export — add parts and nets first");
+      this._status(t("status.nothingExport"));
       return;
     }
     this._renderNetlist();
@@ -2110,13 +2140,13 @@ ${blocks.join("\n")}
     this._persistAutosave(); // record the cleared dirty flag right away
     this._rememberName(name);
     this._updateSaveState();
-    this._status(`saved ${name}.json`);
+    this._status(t("status.saved", { name }));
   }
 
   _updateSaveState() {
     const el = document.getElementById("saveState");
     if (!el) return;
-    el.textContent = this.dirty ? "● unsaved" : "saved";
+    el.textContent = this.dirty ? t("save.unsaved") : t("save.saved");
     el.classList.toggle("dirty", !!this.dirty);
   }
 
@@ -2157,18 +2187,18 @@ ${blocks.join("\n")}
     try {
       data = JSON.parse(await file.text());
     } catch {
-      this._status(`could not open ${file.name}: not valid JSON`);
+      this._status(t("status.openBadJson", { file: file.name }));
       return;
     }
     if (!data || typeof data !== "object" || Array.isArray(data)) {
-      this._status(`could not open ${file.name}: not a Stripboard Studio board file`);
+      this._status(t("status.openNotBoard", { file: file.name }));
       return;
     }
     try {
       this.project = Project.fromJSON(data);
       registerProjectParts(this.project.customParts);
     } catch (err) {
-      this._status(`could not open ${file.name}: ${err.message}`);
+      this._status(t("status.openError", { file: file.name, msg: err.message }));
       return;
     }
     this.fileName = (file.name || "board").replace(/\.json$/i, "");
@@ -2250,7 +2280,7 @@ ${blocks.join("\n")}
       this.selected = null;
       this.selection.clear();
       this.render();
-      this._status(this.allowDiagonal ? "diagonal jumpers enabled — re-run Solve" : "diagonal jumpers disabled — re-run Solve");
+      this._status(this.allowDiagonal ? t("status.diagOn") : t("status.diagOff"));
     });
     document.getElementById("schematic").addEventListener("change", (e) => {
       this.schematic = e.target.checked;
@@ -2649,7 +2679,7 @@ ${blocks.join("\n")}
       }
       const members = [...memberMap.values()];
       if (members.some((m) => m.locked)) {
-        this._status("selection has a locked part — unlock it to move");
+        this._status(t("status.selectLocked"));
         this.render();
         return;
       }

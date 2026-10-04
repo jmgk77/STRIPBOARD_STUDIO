@@ -458,6 +458,9 @@ function deriveCuts(project, owner, pinAt, diagnostics, removedCuts = new Set())
           level: "error",
           code: "adjacent-nets",
           netIds: [a.net, b.net],
+          row: rowLabel(y, rows),
+          colA: a.x,
+          colB: b.x,
           message: `row ${rowLabel(y, rows)}: no room to cut between nets ${netLabel.get(a.net)} and ${netLabel.get(b.net)} (columns ${a.x}–${b.x})`,
         });
       } else {

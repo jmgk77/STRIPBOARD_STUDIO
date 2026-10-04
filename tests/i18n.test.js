@@ -14,6 +14,7 @@ test("i18n translates with the active language and falls back", () => {
   assert.equal(t("prop.multi", { n: 3 }), "3 peças selecionadas");
 
   assert.equal(t("does.not.exist"), "does.not.exist"); // missing key falls back to itself
+  assert.equal(t("issue.pin-on-cut", { ref: "U1", pin: "3", pos: "C3" }), "U1.3 está sobre um corte em C3");
 
   setLang("en"); // restore for any later assertions
 });

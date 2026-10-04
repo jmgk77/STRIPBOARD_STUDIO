@@ -139,9 +139,9 @@ export function analyze(project, library) {
     const eb = jumperEndB(j);
     for (const e of [ea, eb]) {
       if (mounts.has(cellId(e.x, e.y))) {
-        issues.push({ level: "error", code: "mount-on-jumper-end", message: `jumper end ${at(e.x, e.y)} lands on a mounting hole` });
+        issues.push({ level: "error", code: "mount-on-jumper-end", pos: at(e.x, e.y), message: `jumper end ${at(e.x, e.y)} lands on a mounting hole` });
       } else if (!present(e.x, e.y)) {
-        issues.push({ level: "error", code: "jumper-off-copper", message: `jumper end ${at(e.x, e.y)} is off the board or on a cut` });
+        issues.push({ level: "error", code: "jumper-off-copper", pos: at(e.x, e.y), message: `jumper end ${at(e.x, e.y)} is off the board or on a cut` });
       }
     }
     if (present(ea.x, ea.y) && present(eb.x, eb.y)) dsu.union(cellId(ea.x, ea.y), cellId(eb.x, eb.y));
@@ -154,7 +154,7 @@ export function analyze(project, library) {
   for (const comp of project.components.values()) {
     const part = library.get(comp.part);
     if (!part) {
-      issues.push({ level: "error", code: "unknown-part", message: `component ${comp.ref} uses unknown part ${comp.part}` });
+      issues.push({ level: "error", code: "unknown-part", ref: comp.ref, part: comp.part, message: `component ${comp.ref} uses unknown part ${comp.part}` });
       continue;
     }
     const body = componentBody(comp, part);
@@ -181,14 +181,14 @@ export function analyze(project, library) {
       const key = pinKey(comp.ref, p.id);
       pinPos.set(key, { x: p.x, y: p.y });
       if (p.x < 1 || p.x > cols || p.y < 1 || p.y > rows) {
-        issues.push({ level: "error", code: "pin-off-board", ref: comp.ref, pin: p.id, message: `${key} is off the board at ${at(p.x, p.y)}` });
+        issues.push({ level: "error", code: "pin-off-board", ref: comp.ref, pin: p.id, pos: at(p.x, p.y), message: `${key} is off the board at ${at(p.x, p.y)}` });
         continue;
       }
       if (project.cuts.has(cellId(p.x, p.y))) {
-        issues.push({ level: "error", code: "pin-on-cut", ref: comp.ref, pin: p.id, message: `${key} sits on a cut at ${at(p.x, p.y)}` });
+        issues.push({ level: "error", code: "pin-on-cut", ref: comp.ref, pin: p.id, pos: at(p.x, p.y), message: `${key} sits on a cut at ${at(p.x, p.y)}` });
       }
       if (mounts.has(cellId(p.x, p.y))) {
-        issues.push({ level: "error", code: "mount-on-pin", ref: comp.ref, pin: p.id, message: `${key} sits on a mounting hole at ${at(p.x, p.y)}` });
+        issues.push({ level: "error", code: "mount-on-pin", ref: comp.ref, pin: p.id, pos: at(p.x, p.y), message: `${key} sits on a mounting hole at ${at(p.x, p.y)}` });
       }
       pinNode.set(key, dsu.find(cellId(p.x, p.y)));
     }
@@ -210,14 +210,14 @@ export function analyze(project, library) {
       }
     }
     if (under) {
-      issues.push({ level: "error", code: "jumper-under-body", message: `jumper ${at(ea.x, ea.y)}-${at(eb.x, eb.y)} runs under a component body` });
+      issues.push({ level: "error", code: "jumper-under-body", pos: at(ea.x, ea.y), pos2: at(eb.x, eb.y), message: `jumper ${at(ea.x, ea.y)}-${at(eb.x, eb.y)} runs under a component body` });
     }
   }
 
   // A screw head / standoff needs room: warn when a mounting hole sits under a flush body.
   for (const cell of mounts) {
     if (flushBlock.has(cell)) {
-      issues.push({ level: "warn", code: "mount-under-body", message: `mounting hole ${atCell(cell)} is under a component body` });
+      issues.push({ level: "warn", code: "mount-under-body", pos: atCell(cell), message: `mounting hole ${atCell(cell)} is under a component body` });
     }
   }
 
@@ -236,7 +236,7 @@ export function analyze(project, library) {
       regionNets.set(node, set);
     }
     if (placed >= 2 && roots.size > 1) {
-      unconnected.push({ level: "error", code: "net-open", netId: net.id, message: `net ${netLabel.get(net.id)} is split across ${roots.size} copper regions` });
+      unconnected.push({ level: "error", code: "net-open", netId: net.id, regions: roots.size, message: `net ${netLabel.get(net.id)} is split across ${roots.size} copper regions` });
     }
   }
 
@@ -254,6 +254,8 @@ export function analyze(project, library) {
     issues.push({
       level: "warn",
       code: "unconnected-pins",
+      n: unassigned.length,
+      sample,
       message: `${unassigned.length} pin(s) not connected to any net: ${sample}${unassigned.length > 6 ? ", …" : ""}`,
     });
   }
@@ -280,11 +282,11 @@ export function analyze(project, library) {
     const ends = items.filter((i) => i.kind === "jumper" && i.end);
     const arcs = items.filter((i) => i.kind === "jumper" && i.arc);
     const pins = items.filter((i) => i.kind === "pin");
-    if (ends.length > 1) issues.push({ level: "error", code: "jumper-collision", message: `two jumpers share the hole at ${atCell(cell)}` });
-    if (ends.length && pins.length) issues.push({ level: "error", code: "jumper-on-pin", message: `a jumper end lands on a pin at ${atCell(cell)}` });
-    if (arcs.length && pins.length) issues.push({ level: "error", code: "jumper-over-pin", message: `a jumper arcs through a pin at ${atCell(cell)}` });
-    if (arcs.length && ends.length) issues.push({ level: "error", code: "jumper-overlap", message: `a jumper overlaps another jumper at ${atCell(cell)}` });
-    if (pins.length > 1) issues.push({ level: "error", code: "pin-collision", message: `two pins share the hole at ${atCell(cell)}` });
+    if (ends.length > 1) issues.push({ level: "error", code: "jumper-collision", pos: atCell(cell), message: `two jumpers share the hole at ${atCell(cell)}` });
+    if (ends.length && pins.length) issues.push({ level: "error", code: "jumper-on-pin", pos: atCell(cell), message: `a jumper end lands on a pin at ${atCell(cell)}` });
+    if (arcs.length && pins.length) issues.push({ level: "error", code: "jumper-over-pin", pos: atCell(cell), message: `a jumper arcs through a pin at ${atCell(cell)}` });
+    if (arcs.length && ends.length) issues.push({ level: "error", code: "jumper-overlap", pos: atCell(cell), message: `a jumper overlaps another jumper at ${atCell(cell)}` });
+    if (pins.length > 1) issues.push({ level: "error", code: "pin-collision", pos: atCell(cell), message: `two pins share the hole at ${atCell(cell)}` });
   }
 
   // Two components whose pin areas overlap would physically collide.
