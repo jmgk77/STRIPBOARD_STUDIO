@@ -125,6 +125,7 @@ export class App {
     this._busy = false;
 
     this._bindToolbar();
+    this._bindMenus();
     this._bindBoard();
     this._bindKeyboard();
     this._bindUnload();
@@ -2481,6 +2482,26 @@ ${blocks.join("\n")}
     }
     this.selection = next;
     this.selected = this._selectedRefs()[0] ?? null;
+  }
+
+  /** Dropdown menus: only one open at a time, close on outside click / Escape / action. */
+  _bindMenus() {
+    const menus = [...document.querySelectorAll("details.menu")];
+    for (const m of menus) {
+      m.addEventListener("toggle", () => {
+        if (m.open) for (const other of menus) if (other !== m) other.open = false;
+      });
+      m.addEventListener("click", (e) => {
+        // Picking an action (button) closes the menu; toggling a checkbox keeps it open.
+        if (e.target.closest && e.target.closest("button") && !e.target.closest("summary")) m.open = false;
+      });
+    }
+    document.addEventListener("pointerdown", (e) => {
+      for (const m of menus) if (m.open && m.contains && !m.contains(e.target)) m.open = false;
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") for (const m of menus) m.open = false;
+    });
   }
 
   _bindBoard() {
