@@ -2346,6 +2346,9 @@ ${blocks.join("\n")}
         this.render();
         return;
       }
+      // Remember whether this was the ONLY selected part BEFORE we select it, so a plain click
+      // selects the first time and only a second click (on the sole selection) toggles it off.
+      const wasOnly = this.selection.size === 1 && this.selection.has(ref);
       if (!this.selection.has(ref)) this._selectOnly(ref);
       else this.selected = ref; // keep a multi-selection; dragging moves it all
       const comp = this.project.components.get(ref);
@@ -2373,7 +2376,7 @@ ${blocks.join("\n")}
         members: members.map((m) => ({ comp: m, ox: m.x, oy: m.y })),
         before: JSON.stringify(this.project.toJSON()),
         moved: false,
-        wasOnly: this.selection.size === 1 && this.selection.has(ref),
+        wasOnly,
       };
       this.svg.setPointerCapture(evt.pointerId);
       this.render();
