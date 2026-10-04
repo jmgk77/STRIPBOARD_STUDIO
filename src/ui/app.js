@@ -801,7 +801,7 @@ export class App {
     const spot = this.findFreeSpot();
     this.snapshot();
     this.project.addComponent(new Component({ ref, part: name, x: spot.x, y: spot.y, rot: 0, locked: false, value: part.defaultValue }));
-    this.selected = ref;
+    this._selectOnly(ref);
     this._rememberRecent(name);
     this._afterStructuralChange();
   }
