@@ -34,6 +34,7 @@ export function render(svg, state) {
   const focusNets = state.focusNets ?? new Set();
   const selectedWire = state.selectedWire ?? null;
   const jumperStart = state.jumperStart ?? null; // first hole of a hand-drawn jumper
+  const { cols, rows } = project;
   const origin = state.origin ?? { row: 1, col: 1 }; // printed label origin (default A1)
   const colText = (x) => String(origin.col + x - 1);
   const rowText = (y) => rowLetter(origin.row + rows - y);
@@ -61,7 +62,6 @@ export function render(svg, state) {
   };
   const L = state.layers ?? { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
   const { sx, sy } = makeMapper(state);
-  const { cols, rows } = project;
   const width = cols * CELL + PAD * 2;
   const height = rows * CELL + PAD * 2 + 48;
   svg.innerHTML = "";

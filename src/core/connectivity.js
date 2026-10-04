@@ -295,5 +295,5 @@ export function analyze(project, library) {
   }
 
   const all = [...issues, ...unconnected, ...shorts];
-  return { ok: all.every((i) => i.level !== "error"), issues: all, problems: issues, unconnected, shorts, pinNode, regionNets };
+  return { ok: all.every((i) => i.level !== "error"), issues: all, unconnected, shorts, pinNode, regionNets };
 }

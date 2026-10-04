@@ -13,7 +13,17 @@ import { alignCuts } from "../core/align.js";
 import { render, CELL, PAD } from "./scene.js";
 import { renderSchematic } from "./schematic.js";
 
-const REF_PREFIX = { resistor: "R", led: "D", diode: "D", transistor: "Q", module: "U" };
+const REF_PREFIX = {
+  resistor: "R",
+  capacitor: "C",
+  led: "D",
+  diode: "D",
+  transistor: "Q",
+  header: "J",
+  terminal: "J",
+  dip: "U",
+  module: "U",
+};
 const AUTOSAVE_KEY = "stripboard-studio:autosave";
 const SAVED_NAMES_KEY = "stripboard-studio:saved-names";
 const RECENT_PARTS_KEY = "stripboard-studio:recent-parts";
@@ -56,7 +66,7 @@ export class App {
     this.active = "edit";
     this.versions = emptyVersions();
     this._editingPart = null;
-    this._editBefore = null;
+    this._editBefore = new WeakMap(); // per-input: snapshot taken on focus, pushed on change
     this._statusTimer = null;
     this._paletteQuery = "";
     this._printOrigin = "A1"; // remembered print origin
@@ -339,16 +349,17 @@ export class App {
       input.placeholder = net.id;
       input.value = net.label || "";
       input.disabled = !ed;
-      input.addEventListener("focus", () => {
-        this._editBefore = JSON.stringify(this.project.toJSON());
+      input.addEventListener("focus", (e) => {
+        this._editBefore.set(e.target, JSON.stringify(this.project.toJSON()));
       });
       input.addEventListener("input", () => {
         net.label = input.value.trim();
         this._renderBoard(this.project); // live board update, keep focus in this input
       });
-      input.addEventListener("change", () => {
-        if (this._editBefore) this.pushHistory(this._editBefore);
-        this._editBefore = null;
+      input.addEventListener("change", (e) => {
+        const before = this._editBefore.get(e.target);
+        if (before) this.pushHistory(before);
+        this._editBefore.delete(e.target);
         this.render();
       });
       const del = document.createElement("button");
@@ -516,8 +527,8 @@ export class App {
     refInput.value = comp.ref;
     refInput.placeholder = "name";
     refInput.disabled = !ed;
-    refInput.addEventListener("focus", () => {
-      this._editBefore = JSON.stringify(this.project.toJSON());
+    refInput.addEventListener("focus", (e) => {
+      this._editBefore.set(e.target, JSON.stringify(this.project.toJSON()));
     });
     refInput.addEventListener("change", () => this._renameSelected(refInput));
     head.appendChild(refTag);
@@ -558,12 +569,13 @@ export class App {
     valueInput.value = comp.value || "";
     valueInput.placeholder = part?.defaultValue || "(none)";
     valueInput.disabled = !ed;
-    valueInput.addEventListener("focus", () => {
-      this._editBefore = JSON.stringify(this.project.toJSON());
+    valueInput.addEventListener("focus", (e) => {
+      this._editBefore.set(e.target, JSON.stringify(this.project.toJSON()));
     });
-    valueInput.addEventListener("change", () => {
-      if (this._editBefore) this.pushHistory(this._editBefore);
-      this._editBefore = null;
+    valueInput.addEventListener("change", (e) => {
+      const before = this._editBefore.get(e.target);
+      if (before) this.pushHistory(before);
+      this._editBefore.delete(e.target);
       comp.value = valueInput.value.trim();
       this.render();
     });
@@ -584,12 +596,13 @@ export class App {
     groupInput.placeholder = "(ungrouped)";
     groupInput.title = "parts with the same group name stay rigidly together";
     groupInput.disabled = !ed;
-    groupInput.addEventListener("focus", () => {
-      this._editBefore = JSON.stringify(this.project.toJSON());
+    groupInput.addEventListener("focus", (e) => {
+      this._editBefore.set(e.target, JSON.stringify(this.project.toJSON()));
     });
-    groupInput.addEventListener("change", () => {
-      if (this._editBefore) this.pushHistory(this._editBefore);
-      this._editBefore = null;
+    groupInput.addEventListener("change", (e) => {
+      const before = this._editBefore.get(e.target);
+      if (before) this.pushHistory(before);
+      this._editBefore.delete(e.target);
       comp.group = groupInput.value.trim();
       this._afterStructuralChange(false); // grouping does not invalidate the routing
     });
@@ -638,8 +651,8 @@ export class App {
       input.placeholder = pin.id;
       input.value = comp.pinNames?.[pin.id] ?? "";
       input.disabled = !ed;
-      input.addEventListener("focus", () => {
-        this._editBefore = JSON.stringify(this.project.toJSON());
+      input.addEventListener("focus", (e) => {
+        this._editBefore.set(e.target, JSON.stringify(this.project.toJSON()));
       });
       input.addEventListener("input", () => {
         const value = input.value.trim();
@@ -647,9 +660,10 @@ export class App {
         else delete comp.pinNames[pin.id];
         this._renderBoard(this.project); // update board labels, keep focus here
       });
-      input.addEventListener("change", () => {
-        if (this._editBefore) this.pushHistory(this._editBefore);
-        this._editBefore = null;
+      input.addEventListener("change", (e) => {
+        const before = this._editBefore.get(e.target);
+        if (before) this.pushHistory(before);
+        this._editBefore.delete(e.target);
         this.render();
       });
       row.appendChild(tag);
@@ -683,6 +697,7 @@ export class App {
 
   pushHistory(json) {
     this.history.push(json);
+    if (this.history.length > 100) this.history.shift(); // cap undo memory on long sessions
     this.redoStack.length = 0;
     this.dirty = true;
   }
@@ -768,8 +783,9 @@ export class App {
       input.value = comp.ref;
       return;
     }
-    if (this._editBefore) this.pushHistory(this._editBefore);
-    this._editBefore = null;
+    const before = this._editBefore.get(input);
+    if (before) this.pushHistory(before);
+    this._editBefore.delete(input);
     const old = comp.ref;
     this.project.renameComponent(old, next);
     this.selected = next;
@@ -788,16 +804,17 @@ export class App {
     input.placeholder = net.id;
     input.value = net.label || "";
     input.disabled = !ed;
-    input.addEventListener("focus", () => {
-      this._editBefore = JSON.stringify(this.project.toJSON());
+    input.addEventListener("focus", (e) => {
+      this._editBefore.set(e.target, JSON.stringify(this.project.toJSON()));
     });
     input.addEventListener("input", () => {
       net.label = input.value.trim();
       this._renderBoard(this.project); // live board update, keep focus here
     });
-    input.addEventListener("change", () => {
-      if (this._editBefore) this.pushHistory(this._editBefore);
-      this._editBefore = null;
+    input.addEventListener("change", (e) => {
+      const before = this._editBefore.get(e.target);
+      if (before) this.pushHistory(before);
+      this._editBefore.delete(e.target);
       this.render();
     });
     head.appendChild(input);
