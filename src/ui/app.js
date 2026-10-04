@@ -1825,7 +1825,8 @@ export class App {
     if (probTab) {
       const errors = this.issues.filter((i) => i.level === "error").length;
       const warns = this.issues.filter((i) => i.level === "warn").length;
-      probTab.textContent = errors || warns ? `Problems (${errors || warns})` : "Problems";
+      const pLabel = t("tab.problems");
+      probTab.textContent = errors || warns ? `${pLabel} (${errors || warns})` : pLabel;
       probTab.classList.toggle("alert", errors > 0);
       probTab.classList.toggle("warn", errors === 0 && warns > 0);
     }
