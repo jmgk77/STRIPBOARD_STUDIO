@@ -99,6 +99,19 @@ test("the save indicator reflects the dirty flag", (t) => {
   assert.equal(dom.getElementById("saveState").textContent, "● unsaved");
 });
 
+test("Save As uses a dialog and never reuses a name", (t) => {
+  const app = makeApp(t);
+  app.saveAs();
+  assert.equal(dom.getElementById("saveDlg").open, true, "dialog opened");
+  dom.getElementById("saveName").value = "board";
+  app._confirmSave();
+  assert.equal(app.fileName, "board");
+  app.saveAs();
+  dom.getElementById("saveName").value = "board";
+  app._confirmSave();
+  assert.equal(app.fileName, "board (1)", "second save gets a new name");
+});
+
 test("undo history is capped", (t) => {
   const app = makeApp(t);
   for (let i = 0; i < 130; i++) app.pushHistory(JSON.stringify(app.project.toJSON()));

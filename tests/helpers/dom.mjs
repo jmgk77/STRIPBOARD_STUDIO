@@ -103,6 +103,12 @@ class El {
   focus() {}
   blur() {}
   select() {}
+  showModal() {
+    this.open = true;
+  }
+  close() {
+    this.open = false;
+  }
   setPointerCapture() {}
   releasePointerCapture() {}
   closest(sel) {
@@ -191,6 +197,13 @@ export function installDom() {
     setItem: (k, v) => storage.set(k, String(v)),
     removeItem: (k) => storage.delete(k),
   };
+  globalThis.Blob = class {
+    constructor(parts, opts) {
+      this.parts = parts;
+      this.type = opts?.type;
+    }
+  };
+  globalThis.URL = { createObjectURL: () => "blob:test", revokeObjectURL: () => {} };
   globalThis.requestAnimationFrame = (fn) => setTimeout(() => fn(0), 0);
   globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
   return { getElementById, byId, body, document: globalThis.document };

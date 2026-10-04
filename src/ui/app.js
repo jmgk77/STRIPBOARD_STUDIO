@@ -2111,26 +2111,35 @@ ${blocks.join("\n")}
   }
 
   save() {
-    let base = this.fileName ? this._baseName(this.fileName) : null;
-    if (!base) {
-      const ans = window.prompt("Save board as", this.project.title || "board");
-      if (ans == null) return;
-      base = (ans.trim() || "board").replace(/\.json$/i, "");
+    if (!this.fileName) {
+      // First save: ask for a name in the dialog (consistent with Print / Size dialogs).
+      this._openSaveDialog(this.project.title || "board");
+      return;
     }
-    const name = this._uniqueName(base);
+    const name = this._uniqueName(this._baseName(this.fileName));
     this._downloadProject(name);
     this._afterSave(name);
   }
 
   /** Always ask for a name, even when the board already has one. */
   saveAs() {
-    const def = this.fileName ? this._baseName(this.fileName) : this.project.title || "board";
-    const ans = window.prompt("Save board as", def);
-    if (ans == null) return;
-    const base = (ans.trim() || "board").replace(/\.json$/i, "");
+    this._openSaveDialog(this.fileName ? this._baseName(this.fileName) : this.project.title || "board");
+  }
+
+  _openSaveDialog(defaultName) {
+    const input = document.getElementById("saveName");
+    input.value = defaultName;
+    document.getElementById("saveDlg").showModal();
+    input.focus();
+    input.select?.();
+  }
+
+  _confirmSave() {
+    const base = (document.getElementById("saveName").value.trim() || "board").replace(/\.json$/i, "");
     const name = this._uniqueName(base);
     this._downloadProject(name);
     this._afterSave(name);
+    document.getElementById("saveDlg").close();
   }
 
   async open(file) {
@@ -2265,6 +2274,14 @@ ${blocks.join("\n")}
     document.getElementById("useThis").addEventListener("click", () => this.useThis());
     on("sizeSearch", () => this.openSizeSearch());
     document.getElementById("sizeClose").addEventListener("click", () => document.getElementById("sizeDlg").close());
+    document.getElementById("saveGo").addEventListener("click", () => this._confirmSave());
+    document.getElementById("saveCancel").addEventListener("click", () => document.getElementById("saveDlg").close());
+    document.getElementById("saveName").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this._confirmSave();
+      }
+    });
 
     const tabs = [...document.querySelectorAll(".tabbar .tab")];
     for (const tab of tabs) {
