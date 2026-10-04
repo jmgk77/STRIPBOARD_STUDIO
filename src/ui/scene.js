@@ -24,9 +24,13 @@ function el(tag, attrs = {}, parent = null) {
 
 function runsForRow(project, y) {
   const runs = [];
+  const mounts = project.mountingHoles ?? new Set();
   let start = null;
   for (let x = 1; x <= project.cols; x++) {
-    if (!project.cuts.has(cellId(x, y))) {
+    const cell = cellId(x, y);
+    // A cut OR a mounting hole breaks the copper, so runs must split at both (otherwise the
+    // net tint/highlight would show connected copper the analyzer knows is broken).
+    if (!project.cuts.has(cell) && !mounts.has(cell)) {
       if (start === null) start = x;
     } else if (start !== null) {
       runs.push([start, x - 1]);

@@ -1243,8 +1243,9 @@ export class App {
     if (this.project.mountingHoles.has(key)) {
       this.snapshot();
       this.project.mountingHoles.delete(key);
-      this._afterStructuralChange(false);
-      this._status(`mounting hole removed at ${name}`);
+      // A hole breaks (or restores) copper, so any existing routing is now stale.
+      this._afterStructuralChange(true);
+      this._status(`mounting hole removed at ${name} — re-run Solve`);
       return;
     }
     const bad = this._mountBlocker(x, y);
@@ -1254,8 +1255,8 @@ export class App {
     }
     this.snapshot();
     this.project.mountingHoles.add(key);
-    this._afterStructuralChange(false);
-    this._status(`mounting hole added at ${name}`);
+    this._afterStructuralChange(true);
+    this._status(`mounting hole added at ${name} — re-run Solve`);
   }
 
   _mountBlocker(x, y) {
