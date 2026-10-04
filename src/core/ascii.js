@@ -1,7 +1,7 @@
 // A plain-text (ASCII) rendering of the board: strips, cuts, jumpers, pins and a legend.
 // Meant for debugging and for pasting into a chat -- the whole physical state in text.
 
-import { contentBounds, componentPins, rowLabel } from "./geometry.js";
+import { contentBounds, componentPins, mountHoleMetrics, rowLabel } from "./geometry.js";
 import { pinLabel } from "./model.js";
 
 const SYMBOLS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -130,5 +130,14 @@ export function toAscii(project, library, { margin = 1 } = {}) {
   lines.push(
     `mounting holes (Ø${project.mountDiameter ?? 3.2}mm): ${[...(project.mountingHoles ?? [])].sort().map((c) => { const [x, y] = c.split(",").map(Number); return cell(x, y); }).join(" ") || "(none)"}`,
   );
+  const mh = mountHoleMetrics(project);
+  if (mh.holes.length) {
+    const f = (n) => n.toFixed(2);
+    if (mh.pairs.length) {
+      lines.push(`mount hole spacing (mm, centre-to-centre): ${mh.pairs.map((p) => `${p.a}-${p.b} ${f(p.dist)}`).join("  ")}`);
+      lines.push(`mount pattern span (mm): ${f(mh.spanX)} x ${f(mh.spanY)}`);
+    }
+    lines.push(`mount hole centres from top-left (mm): ${mh.holes.map((h) => `${h.cell} (${f(h.mmX)},${f(h.mmY)})`).join("  ")}`);
+  }
   return lines.join("\n");
 }

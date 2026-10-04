@@ -1,9 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { rotateLocal, normalizeDeg, pinWorld, contentBounds, rowLetter, rowLabel } from "../src/core/geometry.js";
+import { rotateLocal, normalizeDeg, pinWorld, contentBounds, mountHoleMetrics, rowLetter, rowLabel } from "../src/core/geometry.js";
 import { LIBRARY } from "../src/core/library.js";
 import { Component, Project } from "../src/core/model.js";
+
+test("mountHoleMetrics gives millimetre distances between holes", () => {
+  const p = new Project({ cols: 36, rows: 27 });
+  p.mountingHoles = new Set(["1,1", "5,1"]); // 4 holes apart on the same row
+  const m = mountHoleMetrics(p);
+  assert.equal(m.holes.length, 2);
+  assert.equal(m.pairs.length, 1);
+  assert.ok(Math.abs(m.pairs[0].dx - 10.16) < 1e-9, `dx ${m.pairs[0].dx}`);
+  assert.ok(Math.abs(m.pairs[0].dy) < 1e-9);
+  assert.ok(Math.abs(m.pairs[0].dist - 10.16) < 1e-9);
+  assert.ok(Math.abs(m.spanX - 10.16) < 1e-9);
+  assert.ok(Math.abs(m.spanY) < 1e-9);
+});
 
 test("rotateLocal handles the four orientations", () => {
   assert.deepEqual(rotateLocal(2, 1, 0), { x: 2, y: 1 });

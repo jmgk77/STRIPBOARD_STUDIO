@@ -178,3 +178,44 @@ export function contentBounds(project, library) {
   if (x0 === Infinity) return null;
   return { x0, y0, x1, y1 };
 }
+
+export const HOLE_PITCH_MM = 2.54; // one stripboard hole = 2.54 mm
+
+/**
+ * Mounting-hole geometry in millimetres, for enclosure/support design. Hole centres sit at the
+ * cell centre, so `mmX`/`mmY` are measured from the board's top-left corner (X to the right,
+ * Y downward, row AA at the top). Also returns every centre-to-centre pair and the pattern span.
+ */
+export function mountHoleMetrics(project) {
+  const { rows } = project;
+  const holes = [...(project.mountingHoles ?? [])].map((c) => {
+    const [x, y] = c.split(",").map(Number);
+    return {
+      cell: c,
+      x,
+      y,
+      mmX: (x - 0.5) * HOLE_PITCH_MM,
+      mmY: (rows - y + 0.5) * HOLE_PITCH_MM,
+    };
+  }).sort((a, b) => a.mmY - b.mmY || a.mmX - b.mmX);
+
+  const pairs = [];
+  for (let i = 0; i < holes.length; i++) {
+    for (let j = i + 1; j < holes.length; j++) {
+      const a = holes[i];
+      const b = holes[j];
+      const dx = (b.x - a.x) * HOLE_PITCH_MM;
+      const dy = (b.y - a.y) * HOLE_PITCH_MM;
+      pairs.push({ a: a.cell, b: b.cell, dx: Math.abs(dx), dy: Math.abs(dy), dist: Math.hypot(dx, dy) });
+    }
+  }
+  let spanX = 0;
+  let spanY = 0;
+  if (holes.length) {
+    const xs = holes.map((h) => h.mmX);
+    const ys = holes.map((h) => h.mmY);
+    spanX = Math.max(...xs) - Math.min(...xs);
+    spanY = Math.max(...ys) - Math.min(...ys);
+  }
+  return { holes, pairs, spanX, spanY };
+}

@@ -6,7 +6,7 @@ import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } 
 import { analyze, safeMountCells } from "../core/connectivity.js";
 import { route } from "../core/router.js";
 import { optimizeAsync, COMPACT_WEIGHTS, EASY_WEIGHTS } from "../core/optimize.js";
-import { componentBody, componentPins, contentBounds, rotateLocal, rowLabel, rowLetter } from "../core/geometry.js";
+import { componentBody, componentPins, contentBounds, mountHoleMetrics, rotateLocal, rowLabel, rowLetter } from "../core/geometry.js";
 import { toAscii } from "../core/ascii.js";
 import { exportNetlist } from "../core/netlist.js";
 import { alignCuts } from "../core/align.js";
@@ -1600,6 +1600,21 @@ export class App {
       const [x, y] = c.split(",").map(Number);
       return cell(x, y);
     }).join(" ") || "(none)";
+    // Millimetre geometry for enclosure/support design (hole = 2.54 mm grid).
+    const mountInfo = (() => {
+      if (mounts.size === 0) return "";
+      const { holes, pairs, spanX, spanY } = mountHoleMetrics(project);
+      const f = (n) => n.toFixed(2);
+      const out = [`Board ${(cols * 2.54).toFixed(1)} x ${(rows * 2.54).toFixed(1)} mm; hole centres are cell centres.`];
+      if (pairs.length) {
+        out.push("Centre-to-centre distances:");
+        for (const p of pairs) out.push(`  ${p.a} - ${p.b} : dx ${f(p.dx)} mm, dy ${f(p.dy)} mm, distance ${f(p.dist)} mm`);
+        out.push(`Pattern span: ${f(spanX)} x ${f(spanY)} mm (dx x dy between the extreme holes)`);
+      }
+      out.push("Each hole centre, from the board's top-left corner (X right, Y down):");
+      for (const h of holes) out.push(`  ${h.cell} : X ${f(h.mmX)} mm, Y ${f(h.mmY)} mm`);
+      return out.join("\n");
+    })();
 
     const bom = new Map();
     for (const c of project.components.values()) {
@@ -1636,7 +1651,10 @@ export class App {
     if (sections.copper) {
       blocks.push(`<h3>Copper side, mirrored (1:1, no components)</h3><div class="page">${build("copper", false).outerHTML}</div>`);
     }
-    if (sections.holes) blocks.push(`<h3>Mounting holes (${mounts.size}, Ø${project.mountDiameter} mm)</h3><pre>${mountList}</pre>`);
+    if (sections.holes) {
+      const holesText = mountList + (mountInfo ? `\n\n${mountInfo}` : "");
+      blocks.push(`<h3>Mounting holes (${mounts.size}, Ø${project.mountDiameter} mm)</h3><pre>${holesText}</pre>`);
+    }
     if (sections.cuts) blocks.push(`<h3>Cuts (${project.cuts.size})</h3><pre>${cutList}</pre>`);
     if (sections.jumpers) blocks.push(`<h3>Jumpers (${project.jumpers.length})</h3><pre>${jumperList}</pre>`);
     if (sections.bom) blocks.push(`<h3>BOM</h3><pre>${bomRows}</pre>`);
