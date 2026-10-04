@@ -37,7 +37,7 @@ export function copperRuns(project, y) {
  */
 export function safeMountCells(project, library) {
   const { cols, rows } = project;
-  const netPin = new Set(); // cells holding a pin that belongs to a net
+  const netPoint = new Set(); // cells where the copper is part of a connection (net)
   const blocked = new Set(); // pins, jumper ends, flush-body cells
   for (const comp of project.components.values()) {
     const part = library.get(comp.part);
@@ -45,7 +45,7 @@ export function safeMountCells(project, library) {
     for (const p of componentPins(comp, part)) {
       const cell = cellId(p.x, p.y);
       blocked.add(cell);
-      if (project.netOf(`${comp.ref}.${p.id}`)) netPin.add(cell);
+      if (project.netOf(`${comp.ref}.${p.id}`)) netPoint.add(cell);
     }
     if (part.wiresUnder === false) {
       const b = componentBody(comp, part);
@@ -57,20 +57,25 @@ export function safeMountCells(project, library) {
     }
   }
   for (const j of project.jumpers) {
-    blocked.add(cellId(j.x, j.ya));
-    blocked.add(cellId(j.x, j.yb));
+    const lo = Math.min(j.ya, j.yb);
+    const hi = Math.max(j.ya, j.yb);
+    // The wire spans the whole column, so a screw there would collide: block it all.
+    for (let y = lo; y <= hi; y++) blocked.add(cellId(j.x, y));
+    // Its ends conduct the net onward, so they are connection points like net pins.
+    netPoint.add(cellId(j.x, lo));
+    netPoint.add(cellId(j.x, hi));
   }
   const safe = new Set();
   for (let y = 1; y <= rows; y++) {
     for (const [a, b] of copperRuns(project, y)) {
-      const pins = [];
-      for (let x = a; x <= b; x++) if (netPin.has(cellId(x, y))) pins.push(x);
+      const points = [];
+      for (let x = a; x <= b; x++) if (netPoint.has(cellId(x, y))) points.push(x);
       for (let x = a; x <= b; x++) {
         const cell = cellId(x, y);
         if (blocked.has(cell)) continue;
-        const left = pins.some((px) => px < x);
-        const right = pins.some((px) => px > x);
-        if (!left || !right) safe.add(cell); // cutting a dead-end / empty run is fine
+        const left = points.some((px) => px < x);
+        const right = points.some((px) => px > x);
+        if (!left || !right) safe.add(cell); // cutting a dead-end / unused run is fine
       }
     }
   }

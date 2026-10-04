@@ -93,6 +93,16 @@ test("safeMountCells: idle copper is safe, net copper between pins is not", () =
   assert.ok(safe.has("5,4"), "an unused strip is safe");
 });
 
+test("safeMountCells: a jumper end is a connection point", () => {
+  const p = new Project({ cols: 12, rows: 6 });
+  p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // pin (2,2) on net A
+  p.nets = [new Net("A", [pinKey("J1", "1")])];
+  p.jumpers = [{ x: 10, ya: 2, yb: 5, net: "A" }]; // carries net A off this run
+  const safe = safeMountCells(p, LIBRARY);
+  assert.ok(!safe.has("6,2"), "between a net pin and a jumper end must be unsafe");
+  assert.ok(safe.has("11,2"), "past the jumper end is a dead-end, safe");
+});
+
 test("a mounting hole breaks the strip", () => {
   const p = new Project({ cols: 12, rows: 6 });
   p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // pin (2,2)

@@ -1265,7 +1265,9 @@ export class App {
     const pin = this._pinAt(x, y);
     if (pin) return `${this._cellName(x, y)} has the pin ${pin}`;
     for (const j of this.project.jumpers) {
-      if (j.x === x && (j.ya === y || j.yb === y)) return `a jumper ends at ${this._cellName(x, y)}`;
+      if (j.x === x && y >= Math.min(j.ya, j.yb) && y <= Math.max(j.ya, j.yb)) {
+        return `a jumper runs over ${this._cellName(x, y)}`;
+      }
     }
     for (const comp of this.project.components.values()) {
       const part = LIBRARY.get(comp.part);
