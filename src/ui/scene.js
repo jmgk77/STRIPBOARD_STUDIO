@@ -156,19 +156,19 @@ export function render(svg, state) {
   (L.wires === false ? [] : project.jumpers).forEach((j, i) => {
     const x = sx(j.x);
     const y1 = sy(j.ya);
+    const x2 = sx(j.x2 ?? j.x); // diagonal wires end in another column
     const y2 = sy(j.yb);
     const sel = selectedWire?.kind === "jumper" && selectedWire.i === i;
     const lit = sel || focusNets.has(j.net);
     const g = el("g", { "data-wire": i, class: "wire hoverable", cursor: "pointer" }, svg);
-    el("line", { x1: x, y1, x2: x, y2, stroke: "transparent", "stroke-width": 16 }, g);
-    if (j.fixed && !mono) el("line", { x1: x, y1, x2: x, y2, stroke: "#ffffff", "stroke-width": 6, "stroke-linecap": "round", opacity: 0.9 }, g);
-    el("line", { x1: x, y1, x2: x, y2, stroke: lit ? C.sel : C.jumper, "stroke-width": sel || (mono && j.fixed) ? 4.5 : 3, "stroke-linecap": "round" }, g);
-    for (const cy of [y1, y2]) {
-      el("circle", { cx: x, cy, r: 6, fill: lit ? C.sel : C.jumper, stroke: C.jumperDark, "stroke-width": 1.5 }, g);
-    }
+    el("line", { x1: x, y1, x2, y2, stroke: "transparent", "stroke-width": 16 }, g);
+    if (j.fixed && !mono) el("line", { x1: x, y1, x2, y2, stroke: "#ffffff", "stroke-width": 6, "stroke-linecap": "round", opacity: 0.9 }, g);
+    el("line", { x1: x, y1, x2, y2, stroke: lit ? C.sel : C.jumper, "stroke-width": sel || (mono && j.fixed) ? 4.5 : 3, "stroke-linecap": "round" }, g);
+    el("circle", { cx: x, cy: y1, r: 6, fill: lit ? C.sel : C.jumper, stroke: C.jumperDark, "stroke-width": 1.5 }, g);
+    el("circle", { cx: x2, cy: y2, r: 6, fill: lit ? C.sel : C.jumper, stroke: C.jumperDark, "stroke-width": 1.5 }, g);
     const net = netById.get(j.net);
     const text = net?.label || (focusNets.has(j.net) ? net?.id : null);
-    if (text) el("text", { x: x + 8, y: (y1 + y2) / 2 + 3, "font-size": 9, fill: C.text, "pointer-events": "none" }, g).textContent = text;
+    if (text) el("text", { x: (x + x2) / 2 + 8, y: (y1 + y2) / 2 + 3, "font-size": 9, fill: C.text, "pointer-events": "none" }, g).textContent = text;
   });
 
   // the first hole of a jumper being drawn by hand

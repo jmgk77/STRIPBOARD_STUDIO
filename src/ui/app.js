@@ -1,7 +1,7 @@
 // Application state and interactions. Renders through ui/scene.js and mutates the model
 // in core/. Undo/redo is whole-project snapshots taken before each change.
 
-import { Component, Project, pinLabel, pinKey, splitPin } from "../core/model.js";
+import { Component, Project, jumperKey, pinLabel, pinKey, splitPin } from "../core/model.js";
 import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } from "../core/library.js";
 import { analyze, safeMountCells } from "../core/connectivity.js";
 import { paretoFront } from "../core/pareto.js";
@@ -49,10 +49,17 @@ function cropTo(clone, dx, dy, cols, rows) {
   clone.fixedCuts = new Set([...clone.fixedCuts].map((k) => shiftCell(k, dx, dy)));
   clone.removedCuts = new Set([...clone.removedCuts].map((k) => shiftCell(k, dx, dy)));
   clone.mountingHoles = new Set([...clone.mountingHoles].map((k) => shiftCell(k, dx, dy)));
-  clone.jumpers = clone.jumpers.map((j) => ({ ...j, x: j.x + dx, ya: j.ya + dy, yb: j.yb + dy }));
+  clone.jumpers = clone.jumpers.map((j) => ({
+    ...j,
+    x: j.x + dx,
+    ya: j.ya + dy,
+    ...(j.x2 !== undefined ? { x2: j.x2 + dx } : {}),
+    yb: j.yb + dy,
+  }));
   clone.removedJumpers = new Set([...clone.removedJumpers].map((k) => {
-    const [x, ya, yb] = k.split(",").map(Number);
-    return `${x + dx},${ya + dy},${yb + dy}`;
+    const parts = k.split(",").map(Number);
+    if (parts.length === 4) return `${parts[0] + dx},${parts[1] + dy},${parts[2] + dx},${parts[3] + dy}`;
+    return `${parts[0] + dx},${parts[1] + dy},${parts[2] + dy}`;
   }));
   clone.cols = cols;
   clone.rows = rows;
@@ -82,6 +89,7 @@ export class App {
     this.showNames = true;
     this.showConnections = false; // force the ratsnest on even after a board has routing
     this.showMountZones = true; // hatch cells where a mounting hole would not affect any net (on by default)
+    this.allowDiagonal = false; // router option (F10): let jumpers span two columns
     this.selectedNet = null;
     this.selectedWire = null;
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
@@ -504,11 +512,13 @@ export class App {
         const j = project.jumpers[this.selectedWire.i];
         if (j) {
           const net = project.nets.find((n) => n.id === j.net);
+          const ex = j.x2 ?? j.x;
           const a = `${j.x}${rowLabel(j.ya, project.rows)}`;
-          const b = `${j.x}${rowLabel(j.yb, project.rows)}`;
-          this._wireBox(box, `Jumper · ${a}-${b}`, [
+          const b = `${ex}${rowLabel(j.yb, project.rows)}`;
+          const len = Math.hypot(ex - j.x, j.yb - j.ya).toFixed(2);
+          this._wireBox(box, `Jumper${j.x2 !== undefined ? " (diagonal)" : ""} · ${a}-${b}`, [
             `net: ${net ? net.label || net.id : "(none)"}`,
-            `length: ${Math.abs(j.yb - j.ya)} holes`,
+            `length: ${len} holes`,
             `state: ${j.fixed ? "fixed" : "auto"}`,
           ], !!j.fixed, ed);
           return;
@@ -1200,7 +1210,7 @@ export class App {
         const j = this.project.jumpers[w.i];
         if (j) {
           // remember the removal so a later Solve does not just put it back
-          this.project.removedJumpers.add(`${j.x},${j.ya},${j.yb}`);
+          this.project.removedJumpers.add(jumperKey(j));
           this.project.jumpers.splice(w.i, 1);
         }
       } else if (w.kind === "mount") {
@@ -1479,7 +1489,7 @@ export class App {
     const jumperEnds = new Set();
     for (const j of this.project.jumpers) {
       jumperEnds.add(`${j.x},${j.ya}`);
-      jumperEnds.add(`${j.x},${j.yb}`);
+      jumperEnds.add(`${j.x2 ?? j.x},${j.yb}`);
     }
     for (let y = lo; y <= hi; y++) {
       const cell = `${x},${y}`;
@@ -1594,7 +1604,7 @@ export class App {
   async _computeSizes(onProgress) {
     // 1. Compact once to learn the smallest content size.
     const compacted = this.project.clone();
-    await optimizeAsync(compacted, LIBRARY, { weights: COMPACT_WEIGHTS, maxPasses: 6, maxEvaluations: 300 });
+    await optimizeAsync(compacted, LIBRARY, { weights: COMPACT_WEIGHTS, maxPasses: 6, maxEvaluations: 300, diagonal: this.allowDiagonal });
     const bb = contentBounds(compacted, LIBRARY) ?? { x0: 1, y0: 1, x1: this.project.cols, y1: this.project.rows };
     const minW = Math.max(4, bb.x1 - bb.x0 + 1);
     const minH = Math.max(4, bb.y1 - bb.y0 + 1);
@@ -1624,8 +1634,8 @@ export class App {
         clone.cols = d.w;
         clone.rows = d.h;
       }
-      await optimizeAsync(clone, LIBRARY, { maxPasses: 4, maxEvaluations: 120 }); // balanced: uses the space
-      const r = route(clone, LIBRARY);
+      await optimizeAsync(clone, LIBRARY, { maxPasses: 4, maxEvaluations: 120, diagonal: this.allowDiagonal }); // balanced: uses the space
+      const r = route(clone, LIBRARY, { diagonal: this.allowDiagonal });
       clone.cuts = alignCuts(clone, LIBRARY, r.cuts, r.jumpers);
       clone.jumpers = r.jumpers.map((j) => ({ x: j.x, ya: j.ya, yb: j.yb, net: j.net, fixed: !!j.fixed }));
       const a = analyze(clone, LIBRARY);
@@ -1721,10 +1731,10 @@ export class App {
       // needs without freezing the tab (no time limit). All three presets share the same
       // search budget, so they differ only by their weights (the intended design).
       const weights = name === "compact" ? COMPACT_WEIGHTS : name === "easy" ? EASY_WEIGHTS : undefined;
-      await optimizeAsync(clone, LIBRARY, { weights, maxPasses: 6, maxEvaluations: 300 });
+      await optimizeAsync(clone, LIBRARY, { weights, maxPasses: 6, maxEvaluations: 300, diagonal: this.allowDiagonal });
     }
     // solve / optimize / compact all finish by routing the (possibly optimized) board
-    const result = route(clone, LIBRARY);
+    const result = route(clone, LIBRARY, { diagonal: this.allowDiagonal });
     clone.cuts = alignCuts(clone, LIBRARY, result.cuts, result.jumpers);
     clone.jumpers = result.jumpers.map((j) => ({ x: j.x, ya: j.ya, yb: j.yb, net: j.net, fixed: !!j.fixed }));
     return clone;
@@ -1835,7 +1845,7 @@ export class App {
       const [x, y] = c.split(",").map(Number);
       return cell(x, y);
     }).join(" ") || "(none)";
-    const jumperList = project.jumpers.map((j) => `${cell(j.x, j.ya)}-${cell(j.x, j.yb)} (${j.net || "?"})`).join("; ") || "(none)";
+    const jumperList = project.jumpers.map((j) => `${cell(j.x, j.ya)}-${cell(j.x2 ?? j.x, j.yb)} (${j.net || "?"})`).join("; ") || "(none)";
     const mounts = project.mountingHoles ?? new Set();
     const mountList = [...mounts].sort().map((c) => {
       const [x, y] = c.split(",").map(Number);
@@ -2193,6 +2203,16 @@ ${blocks.join("\n")}
     document.getElementById("mountzones").addEventListener("change", (e) => {
       this.showMountZones = e.target.checked;
       this.render();
+    });
+    document.getElementById("diagonals").addEventListener("change", (e) => {
+      this.allowDiagonal = e.target.checked;
+      // A routing option changed: cached results are stale, so go back to Edit.
+      this.versions = emptyVersions();
+      this.active = "edit";
+      this.selected = null;
+      this.selection.clear();
+      this.render();
+      this._status(this.allowDiagonal ? "diagonal jumpers enabled — re-run Solve" : "diagonal jumpers disabled — re-run Solve");
     });
     document.getElementById("schematic").addEventListener("change", (e) => {
       this.schematic = e.target.checked;

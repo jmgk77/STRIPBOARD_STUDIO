@@ -5,6 +5,45 @@
 
 export const pinKey = (ref, pin) => `${ref}.${pin}`;
 
+// A jumper connects two holes: end A = (x, ya) and end B = (x2 ?? x, yb). `x2` (if present and
+// different) makes it a diagonal wire; absent/equal means the usual vertical wire.
+export const jumperEndA = (j) => ({ x: j.x, y: j.ya });
+export const jumperEndB = (j) => ({ x: j.x2 ?? j.x, y: j.yb });
+
+/** Stable key for a jumper (also used for the "removed/tombstone" set). */
+export function jumperKey(j) {
+  const x2 = j.x2 ?? j.x;
+  return x2 === j.x ? `${j.x},${j.ya},${j.yb}` : `${j.x},${j.ya},${x2},${j.yb}`;
+}
+
+/** Cells strictly between the two ends along the wire (Bresenham), for clearance/DRC. */
+export function jumperSpan(j) {
+  const a = jumperEndA(j);
+  const b = jumperEndB(j);
+  const out = [];
+  let x = a.x;
+  let y = a.y;
+  const dx = Math.abs(b.x - a.x);
+  const dy = Math.abs(b.y - a.y);
+  const sx = a.x < b.x ? 1 : -1;
+  const sy = a.y < b.y ? 1 : -1;
+  let err = dx - dy;
+  for (;;) {
+    if (!(x === a.x && y === a.y) && !(x === b.x && y === b.y)) out.push({ x, y });
+    if (x === b.x && y === b.y) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+  return out;
+}
+
 export function splitPin(key) {
   const i = key.lastIndexOf(".");
   return { ref: key.slice(0, i), pin: key.slice(i + 1) };
@@ -203,6 +242,7 @@ export class Project {
     p.fixedCuts = new Set(o.fixedCuts ?? []);
     p.jumpers = (o.jumpers ?? []).map((j) => {
       const out = { x: j.x, ya: j.ya, yb: j.yb };
+      if (j.x2 !== undefined && j.x2 !== j.x) out.x2 = j.x2; // diagonal wire
       if (j.net) out.net = j.net;
       if (j.fixed) out.fixed = true;
       return out;

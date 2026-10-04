@@ -125,11 +125,11 @@ function signature(project) {
     .join("|");
 }
 
-function evaluate(project, library, cache, weights) {
+function evaluate(project, library, cache, weights, routeOpts = {}) {
   const key = signature(project);
   const hit = cache.get(key);
   if (hit) return hit;
-  const r = route(project, library, { maxAttempts: 4 });
+  const r = route(project, library, { maxAttempts: 4, ...routeOpts });
   // Temporarily apply the routing instead of deep-cloning the project (much cheaper).
   const prevCuts = project.cuts;
   const prevJumpers = project.jumpers;
@@ -167,9 +167,10 @@ function evaluate(project, library, cache, weights) {
 function* optimizeGen(
   project,
   library,
-  { weights: overrides = {}, maxPasses = 4, maxEvaluations = 120, cooperative = false, yieldMs = 12 } = {},
+  { weights: overrides = {}, maxPasses = 4, maxEvaluations = 120, cooperative = false, yieldMs = 12, diagonal = false } = {},
 ) {
   const weights = { ...DEFAULT_WEIGHTS, ...overrides };
+  const routeOpts = { diagonal };
   const cache = new Map();
   let evaluations = 0;
   let lastYield = Date.now();
@@ -178,7 +179,7 @@ function* optimizeGen(
   const free = units.flatMap((u) => u.members);
   const freeSet = new Set(free);
   const fixed = [...project.components.values()].filter((c) => !freeSet.has(c));
-  let best = evaluate(project, library, cache, weights);
+  let best = evaluate(project, library, cache, weights, routeOpts);
   evaluations += 1;
   const startScore = best.score;
 
@@ -206,7 +207,7 @@ function* optimizeGen(
           c.x += dx;
           c.y += dy;
         }
-        const val = evaluate(project, library, cache, weights);
+        const val = evaluate(project, library, cache, weights, routeOpts);
         evaluations += 1;
         for (const c of free) {
           c.x -= dx;
@@ -283,7 +284,7 @@ function* optimizeGen(
           yield evaluations;
         }
         apply(cand);
-        const val = evaluate(project, library, cache, weights);
+        const val = evaluate(project, library, cache, weights, routeOpts);
         evaluations += 1;
         if (val.score < bestVal.score) {
           bestVal = val;

@@ -8,9 +8,25 @@
 
 import { analyze, cellId } from "./connectivity.js";
 import { componentBody, componentPins, rowLabel } from "./geometry.js";
-import { pinKey, Project } from "./model.js";
+import { jumperKey, jumperSpan, pinKey, Project } from "./model.js";
 
 const JUMPER_COST = 6; // prefer copper over a jumper
+const DIAG_COST = 10; // a diagonal wire (F10) costs more: longer, off-axis, fiddlier
+const DIAG_DX = 2; // diagonal search: column reach
+const DIAG_DY = 6; // diagonal search: row reach
+
+// Canonical (order-independent) key for a wire between two holes.
+function wireKey(x1, y1, x2, y2) {
+  let ax = x1;
+  let ay = y1;
+  let bx = x2;
+  let by = y2;
+  if (ax > bx || (ax === bx && ay > by)) {
+    [ax, bx] = [bx, ax];
+    [ay, by] = [by, ay];
+  }
+  return jumperKey(bx === ax ? { x: ax, ya: ay, yb: by } : { x: ax, ya: ay, x2: bx, yb: by });
+}
 
 class MinHeap {
   constructor() {
@@ -50,7 +66,7 @@ class MinHeap {
   }
 }
 
-export function route(project, library, { maxAttempts = Infinity } = {}) {
+export function route(project, library, { maxAttempts = Infinity, diagonal = false } = {}) {
   const { cols, rows } = project;
 
   const pinAt = new Map(); // cell -> net id | null (every pin occupies its hole)
@@ -78,7 +94,7 @@ export function route(project, library, { maxAttempts = Infinity } = {}) {
   let tried = 0;
   for (const order of orderings([...pinsByNet.keys()], pinsByNet)) {
     if (tried++ >= maxAttempts) break;
-    const attempt = runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts, fixedJumpers, removedCuts, removedJumpers);
+    const attempt = runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts, fixedJumpers, removedCuts, removedJumpers, diagonal);
     if (best === null || attempt.score < best.score) best = attempt;
     if (best.errors === 0) break; // a valid result; good enough
   }
@@ -94,7 +110,7 @@ export function route(project, library, { maxAttempts = Infinity } = {}) {
 
 // -- one routing attempt ------------------------------------------------------
 
-function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new Set(), fixedJumpers = [], removedCuts = new Set(), removedJumpers = new Set()) {
+function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new Set(), fixedJumpers = [], removedCuts = new Set(), removedJumpers = new Set(), diagonal = false) {
   const { cols, rows } = project;
   const netLabel = new Map(project.nets.map((n) => [n.id, n.label || n.id]));
 
@@ -178,16 +194,17 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
   const extra = new Map(); // net -> [{x,y}] endpoints that must be reached
   const fixedEdges = new Map(); // net -> Map(cell -> the other endpoint cell)
   for (const j of fixedJumpers) {
+    const ebx = j.x2 ?? j.x;
     const c1 = cellId(j.x, j.ya);
-    const c2 = cellId(j.x, j.yb);
+    const c2 = cellId(ebx, j.yb);
     owner.set(c1, j.net);
     owner.set(c2, j.net);
     jumperEnds.add(c1);
     jumperEnds.add(c2);
-    for (let y = j.ya + 1; y < j.yb; y++) arc.set(cellId(j.x, y), j.net);
-    jumpers.push({ x: j.x, ya: j.ya, yb: j.yb, net: j.net, fixed: true });
+    for (const p of jumperSpan(j)) arc.set(cellId(p.x, p.y), j.net);
+    jumpers.push({ x: j.x, ya: j.ya, ...(j.x2 && j.x2 !== j.x ? { x2: j.x2 } : {}), yb: j.yb, net: j.net, fixed: true });
     const list = extra.get(j.net) ?? [];
-    list.push({ x: j.x, y: j.ya }, { x: j.x, y: j.yb });
+    list.push({ x: j.x, y: j.ya }, { x: ebx, y: j.yb });
     extra.set(j.net, list);
     const edges = fixedEdges.get(j.net) ?? new Map();
     edges.set(c1, c2);
@@ -251,6 +268,38 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
             heap.push([nc, x, ny], d + cost);
           }
         }
+        // Diagonal wires (F10, opt-in): a wire to a hole in another column. Higher cost, so
+        // copper/vertical are preferred; blocked by any pin/arc/end/body on the wire's cells.
+        if (diagonal) {
+          for (let dx = -DIAG_DX; dx <= DIAG_DX; dx++) {
+            if (dx === 0) continue;
+            const nx = x + dx;
+            if (nx < 1 || nx > cols) continue;
+            for (let dy = -DIAG_DY; dy <= DIAG_DY; dy++) {
+              if (dy === 0) continue;
+              const ny = y + dy;
+              if (ny < 1 || ny > rows) continue;
+              if (!endpointUsable(net, nx, ny)) continue;
+              if (removedJumpers.has(wireKey(x, y, nx, ny))) continue;
+              let segBlocked = false;
+              for (const p of jumperSpan({ x, ya: y, x2: nx, yb: ny })) {
+                const c = cellId(p.x, p.y);
+                if (pinAt.has(c) || arc.has(c) || jumperEnds.has(c) || bodyBlock.has(c)) {
+                  segBlocked = true;
+                  break;
+                }
+              }
+              if (segBlocked) continue;
+              const cost = DIAG_COST + Math.hypot(nx - x, ny - y) * 1.5;
+              const nc = cellId(nx, ny);
+              if (d + cost < (dist.get(nc) ?? Infinity)) {
+                dist.set(nc, d + cost);
+                prev.set(nc, { from: cell, kind: "d" });
+                heap.push([nc, nx, ny], d + cost);
+              }
+            }
+          }
+        }
       }
       // A fixed jumper joins its two holes at no cost (it is already soldered).
       const other = fixedEdge?.get(cell);
@@ -283,16 +332,23 @@ function runAttempt(project, library, order, pinAt, pinsByNet, fixedCuts = new S
     for (let i = 0; i + 1 < path.length; i++) {
       const [x1, y1] = path[i].split(",").map(Number);
       const [x2, y2] = path[i + 1].split(",").map(Number);
-      if (x1 === x2 && y1 !== y2) {
-        const lo = Math.min(y1, y2);
-        const hi = Math.max(y1, y2);
-        if (!jumpers.some((j) => j.x === x1 && j.ya === lo && j.yb === hi)) {
-          jumpers.push({ x: x1, ya: lo, yb: hi, net, fixed: false });
-          jumperEnds.add(cellId(x1, lo));
-          jumperEnds.add(cellId(x1, hi));
-          for (let y = lo + 1; y < hi; y++) arc.set(cellId(x1, y), net);
-        }
+      if (y1 === y2) continue; // a horizontal move runs on copper, not a wire
+      // Canonicalise end order so the same wire always yields the same key.
+      let ax = x1;
+      let ay = y1;
+      let bx = x2;
+      let by = y2;
+      if (ax > bx || (ax === bx && ay > by)) {
+        [ax, bx] = [bx, ax];
+        [ay, by] = [by, ay];
       }
+      const jumper = bx === ax ? { x: ax, ya: ay, yb: by } : { x: ax, ya: ay, x2: bx, yb: by };
+      const key = jumperKey(jumper);
+      if (jumpers.some((j) => jumperKey(j) === key)) continue;
+      jumpers.push({ ...jumper, net, fixed: false });
+      jumperEnds.add(cellId(ax, ay));
+      jumperEnds.add(cellId(bx, by));
+      for (const p of jumperSpan(jumper)) arc.set(cellId(p.x, p.y), net);
     }
   }
 

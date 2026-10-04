@@ -2,7 +2,7 @@
 // Meant for debugging and for pasting into a chat -- the whole physical state in text.
 
 import { contentBounds, componentPins, mountHoleMetrics, rowLabel } from "./geometry.js";
-import { pinLabel } from "./model.js";
+import { jumperEndA, jumperEndB, jumperSpan, pinLabel } from "./model.js";
 
 const SYMBOLS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -34,12 +34,14 @@ export function toAscii(project, library, { margin = 1 } = {}) {
     if (p) grid[p.cy][p.cx] = "x";
   }
   for (const j of project.jumpers) {
-    for (const yy of [j.ya, j.yb]) {
-      const p = at(j.x, yy);
-      if (p) grid[p.cy][p.cx] = "o";
-    }
-    for (let yy = j.ya + 1; yy < j.yb; yy++) {
-      const p = at(j.x, yy);
+    const ea = jumperEndA(j);
+    const eb = jumperEndB(j);
+    const pa = at(ea.x, ea.y);
+    if (pa) grid[pa.cy][pa.cx] = "o";
+    const pb = at(eb.x, eb.y);
+    if (pb) grid[pb.cy][pb.cx] = "o";
+    for (const s of jumperSpan(j)) {
+      const p = at(s.x, s.y);
       if (p) grid[p.cy][p.cx] = "|";
     }
   }
@@ -111,7 +113,7 @@ export function toAscii(project, library, { margin = 1 } = {}) {
   );
   lines.push(
     `jumpers (* = fixed): ${project.jumpers
-      .map((j) => `${cell(j.x, j.ya)}-${cell(j.x, j.yb)}${j.fixed ? "*" : ""}`)
+      .map((j) => `${cell(j.x, j.ya)}-${cell(j.x2 ?? j.x, j.yb)}${j.fixed ? "*" : ""}`)
       .join(" ") || "(none)"}`,
   );
   const removedCuts = [...(project.removedCuts ?? [])].sort();
@@ -121,8 +123,10 @@ export function toAscii(project, library, { margin = 1 } = {}) {
     lines.push(
       `removed jumpers (tombstones): ${removedJumpers
         .map((k) => {
-          const [x, ya, yb] = k.split(",").map(Number);
-          return `${cell(x, ya)}-${cell(x, yb)}`;
+          const parts = k.split(",").map(Number);
+          const [x, ya] = parts;
+          const [x2, yb] = parts.length === 4 ? [parts[2], parts[3]] : [x, parts[2]];
+          return `${cell(x, ya)}-${cell(x2, yb)}`;
         })
         .join(" ")}`,
     );

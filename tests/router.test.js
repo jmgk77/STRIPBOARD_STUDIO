@@ -35,6 +35,29 @@ test("a flush body's holes are a jumper keep-out", () => {
   }
 });
 
+test("diagonal option is opt-in and yields a valid board", () => {
+  const build = () => {
+    const p = new Project({ cols: 14, rows: 10 });
+    p.addComponent(new Component({ ref: "J1", part: "header4", x: 2, y: 2 }));
+    p.addComponent(new Component({ ref: "J2", part: "header4", x: 7, y: 2 }));
+    p.nets = [
+      new Net("A", [pinKey("J1", "1"), pinKey("J1", "4")]),
+      new Net("B", [pinKey("J2", "1"), pinKey("J2", "4")]),
+    ];
+    return p;
+  };
+  const p1 = build();
+  const r1 = route(p1, LIBRARY);
+  assert.ok(!r1.jumpers.some((j) => j.x2 !== undefined && j.x2 !== j.x), "no diagonals by default");
+
+  const p2 = build();
+  const r2 = route(p2, LIBRARY, { diagonal: true });
+  p2.cuts = r2.cuts;
+  p2.jumpers = r2.jumpers.map((j) => ({ ...j }));
+  const a = analyze(p2, LIBRARY);
+  assert.equal(a.ok, true, JSON.stringify(a.issues));
+});
+
 test("a tombstoned cut is not re-derived (delete stays deleted)", () => {
   const p = new Project({ cols: 14, rows: 10 });
   p.addComponent(new Component({ ref: "J1", part: "header4", x: 2, y: 2 })); // (2,2)..(2,5)

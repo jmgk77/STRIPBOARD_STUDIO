@@ -8,7 +8,7 @@
 // connectivity elsewhere.
 
 import { componentBody, componentPins, rowLabel } from "./geometry.js";
-import { pinKey } from "./model.js";
+import { jumperEndA, jumperEndB, jumperSpan, pinKey } from "./model.js";
 
 export const cellId = (x, y) => `${x},${y}`;
 
@@ -135,14 +135,16 @@ export function analyze(project, library) {
   const issues = [];
 
   for (const j of project.jumpers) {
-    for (const [x, y] of [[j.x, j.ya], [j.x, j.yb]]) {
-      if (mounts.has(cellId(x, y))) {
-        issues.push({ level: "error", code: "mount-on-jumper-end", message: `jumper end ${at(x, y)} lands on a mounting hole` });
-      } else if (!present(x, y)) {
-        issues.push({ level: "error", code: "jumper-off-copper", message: `jumper end ${at(x, y)} is off the board or on a cut` });
+    const ea = jumperEndA(j);
+    const eb = jumperEndB(j);
+    for (const e of [ea, eb]) {
+      if (mounts.has(cellId(e.x, e.y))) {
+        issues.push({ level: "error", code: "mount-on-jumper-end", message: `jumper end ${at(e.x, e.y)} lands on a mounting hole` });
+      } else if (!present(e.x, e.y)) {
+        issues.push({ level: "error", code: "jumper-off-copper", message: `jumper end ${at(e.x, e.y)} is off the board or on a cut` });
       }
     }
-    if (present(j.x, j.ya) && present(j.x, j.yb)) dsu.union(cellId(j.x, j.ya), cellId(j.x, j.yb));
+    if (present(ea.x, ea.y) && present(eb.x, eb.y)) dsu.union(cellId(ea.x, ea.y), cellId(eb.x, eb.y));
   }
 
   const pinNode = new Map();
@@ -197,15 +199,18 @@ export function analyze(project, library) {
   // flag body cells that do not hold a pin.
   const pinCells = new Set([...pinPos.values()].map((p) => cellId(p.x, p.y)));
   for (const j of project.jumpers) {
-    const lo = Math.min(j.ya, j.yb);
-    const hi = Math.max(j.ya, j.yb);
+    const ea = jumperEndA(j);
+    const eb = jumperEndB(j);
+    const cells = [cellId(ea.x, ea.y), ...jumperSpan(j).map((p) => cellId(p.x, p.y)), cellId(eb.x, eb.y)];
     let under = false;
-    for (let y = lo; y <= hi && !under; y++) {
-      const c = cellId(j.x, y);
-      if (flushBlock.has(c) && !pinCells.has(c)) under = true;
+    for (const c of cells) {
+      if (flushBlock.has(c) && !pinCells.has(c)) {
+        under = true;
+        break;
+      }
     }
     if (under) {
-      issues.push({ level: "error", code: "jumper-under-body", message: `jumper ${at(j.x, lo)}-${at(j.x, hi)} runs under a component body` });
+      issues.push({ level: "error", code: "jumper-under-body", message: `jumper ${at(ea.x, ea.y)}-${at(eb.x, eb.y)} runs under a component body` });
     }
   }
 

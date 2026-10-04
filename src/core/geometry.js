@@ -173,7 +173,7 @@ export function contentBounds(project, library) {
   }
   for (const j of project.jumpers) {
     hit(j.x, j.ya);
-    hit(j.x, j.yb);
+    hit(j.x2 ?? j.x, j.yb);
   }
   if (x0 === Infinity) return null;
   return { x0, y0, x1, y1 };

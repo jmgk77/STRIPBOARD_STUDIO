@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { Project, Component, Net, pinKey, pinLabel } from "../src/core/model.js";
+import { Project, Component, Net, pinKey, pinLabel, jumperKey, jumperSpan } from "../src/core/model.js";
+
+test("jumperKey and jumperSpan handle vertical and diagonal wires", () => {
+  assert.equal(jumperKey({ x: 3, ya: 2, yb: 6 }), "3,2,6");
+  assert.equal(jumperKey({ x: 3, ya: 2, x2: 5, yb: 6 }), "3,2,5,6");
+  assert.deepEqual(jumperSpan({ x: 3, ya: 2, yb: 5 }).map((p) => `${p.x},${p.y}`), ["3,3", "3,4"]);
+  assert.deepEqual(jumperSpan({ x: 1, ya: 1, x2: 4, yb: 4 }).map((p) => `${p.x},${p.y}`), ["2,2", "3,3"]);
+});
 
 test("splitNet moves pins out into a new net; connect merges them back", () => {
   const p = new Project();
