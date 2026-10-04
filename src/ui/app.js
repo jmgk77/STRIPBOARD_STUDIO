@@ -12,6 +12,7 @@ import { toAscii } from "../core/ascii.js";
 import { exportNetlist } from "../core/netlist.js";
 import { alignCuts } from "../core/align.js";
 import { render, CELL, PAD } from "./scene.js";
+import { applyStatic, setLang, t } from "./i18n.js";
 import { renderSchematic } from "./schematic.js";
 
 const REF_PREFIX = {
@@ -27,6 +28,8 @@ const REF_PREFIX = {
 };
 const AUTOSAVE_KEY = "stripboard-studio:autosave";
 const SAVED_NAMES_KEY = "stripboard-studio:saved-names";
+const THEME_KEY = "stripboard-studio:theme";
+const LANG_KEY = "stripboard-studio:lang";
 const RECENT_PARTS_KEY = "stripboard-studio:recent-parts";
 
 // Fresh set of (empty) cached result tabs.
@@ -90,6 +93,8 @@ export class App {
     this.showConnections = false; // force the ratsnest on even after a board has routing
     this.showMountZones = true; // hatch cells where a mounting hole would not affect any net (on by default)
     this.allowDiagonal = false; // router option (F10): let jumpers span two columns
+    this.theme = this._loadTheme(); // "auto" | "light" | "dark"
+    this.lang = this._loadLang(); // "auto" | "en" | "pt"
     this.zoom = 1; // board zoom (1 = fit)
     this.pan = { x: 0, y: 0 }; // top-left of the visible viewBox, in board units
     this._panDrag = null;
@@ -124,6 +129,8 @@ export class App {
     this._bindKeyboard();
     this._bindUnload();
     this._restoreAutosave();
+    setLang(this._resolveLang());
+    applyStatic();
     this._syncSizeInputs();
     this.render();
   }
@@ -169,6 +176,7 @@ export class App {
       view: this.view,
       selected: this.selected,
       selection: this._selectedRefs(),
+      theme: this._effectiveTheme(),
       marquee: this.marquee,
       selectedGroup: (this.selected && project.components.get(this.selected)?.group) || this.activeGroup || null,
       mountZones: this.showMountZones ? safeMountCells(project, LIBRARY) : null,
@@ -195,6 +203,7 @@ export class App {
   }
 
   render() {
+    this._applyTheme();
     const project = this._shownProject();
     this.issues = analyze(project, LIBRARY).issues;
     this._renderBoard(project);
@@ -359,7 +368,7 @@ export class App {
       det.appendChild(inner);
       box.appendChild(det);
     }
-    if (!shown) box.innerHTML = '<div class="muted">no parts match</div>';
+    if (!shown) box.innerHTML = `<div class="muted">${t("palette.none")}</div>`;
   }
 
   _renderNets() {
@@ -468,7 +477,7 @@ export class App {
     const box = document.getElementById("problems");
     box.innerHTML = "";
     if (this.issues.length === 0) {
-      box.innerHTML = '<div class="muted">no problems</div>';
+      box.innerHTML = `<div class="muted">${t("problems.none")}</div>`;
       return;
     }
     for (const issue of this.issues) {
@@ -476,7 +485,7 @@ export class App {
       item.className = "item";
       const pill = document.createElement("span");
       pill.className = `pill ${issue.level === "error" ? "error" : "warn"}`;
-      pill.textContent = issue.level;
+      pill.textContent = t(`level.${issue.level}`);
       item.appendChild(pill);
       item.appendChild(document.createTextNode(" " + issue.message));
       item.title = "click to highlight";
@@ -521,10 +530,10 @@ export class App {
           const a = `${j.x}${rowLabel(j.ya, project.rows)}`;
           const b = `${ex}${rowLabel(j.yb, project.rows)}`;
           const len = Math.hypot(ex - j.x, j.yb - j.ya).toFixed(2);
-          this._wireBox(box, `Jumper${j.x2 !== undefined ? " (diagonal)" : ""} · ${a}-${b}`, [
-            `net: ${net ? net.label || net.id : "(none)"}`,
+          this._wireBox(box, `${t(j.x2 !== undefined ? "prop.jumperDiag" : "prop.jumper")} · ${a}-${b}`, [
+            `net: ${net ? net.label || net.id : t("prop.none")}`,
             `length: ${len} holes`,
-            `state: ${j.fixed ? "fixed" : "auto"}`,
+            `state: ${t(j.fixed ? "prop.fixed" : "prop.auto")}`,
           ], !!j.fixed, ed);
           return;
         }
@@ -532,15 +541,15 @@ export class App {
       if (this.selectedWire?.kind === "cut") {
         const [x, y] = this.selectedWire.key.split(",").map(Number);
         const fixed = project.fixedCuts?.has(this.selectedWire.key);
-        this._wireBox(box, `Cut · ${rowLabel(y, project.rows)}${x}`, [
+        this._wireBox(box, `${t("prop.cut")} · ${rowLabel(y, project.rows)}${x}`, [
           "breaks the strip on this row",
-          `state: ${fixed ? "fixed" : "auto"}`,
+          `state: ${t(fixed ? "prop.fixed" : "prop.auto")}`,
         ], !!fixed, ed);
         return;
       }
       if (this.selectedWire?.kind === "mount") {
         const [x, y] = this.selectedWire.key.split(",").map(Number);
-        this._wireBox(box, `Mounting hole · ${rowLabel(y, project.rows)}${x}`, [
+        this._wireBox(box, `${t("prop.mount")} · ${rowLabel(y, project.rows)}${x}`, [
           `drill Ø${project.mountDiameter} mm (through-hole)`,
           "the strip is cut here (no copper)",
         ], false, ed, false);
@@ -549,13 +558,13 @@ export class App {
       if (this.selectedNet) {
         const net = project.nets.find((n) => n.id === this.selectedNet);
         if (!net) {
-          box.textContent = "(none)";
+          box.textContent = t("prop.none");
           return;
         }
         this._netBox(box, net, project, ed);
         return;
       }
-      box.textContent = "(none)";
+      box.textContent = t("prop.none");
       return;
     }
     const part = LIBRARY.get(comp.part);
@@ -563,7 +572,7 @@ export class App {
     head.className = "pinrow";
     const refTag = document.createElement("span");
     refTag.className = "pintag";
-    refTag.textContent = "ref";
+    refTag.textContent = t("prop.ref");
     const refInput = document.createElement("input");
     refInput.type = "text";
     refInput.value = comp.ref;
@@ -595,17 +604,17 @@ export class App {
       b.addEventListener("click", fn);
       return b;
     };
-    actions.appendChild(action("Rotate", "rotate 90° (R)", () => this.rotateSelected()));
-    actions.appendChild(action(comp.locked ? "Unlock" : "Lock", comp.locked ? "release (L)" : "pin it so Solve keeps it (L)", () => this.lockSelected()));
-    actions.appendChild(action("Duplicate", "copy this part (Ctrl+D)", () => this.duplicateSelected()));
-    actions.appendChild(action("Delete", "remove (Delete)", () => this.deleteSelected()));
+    actions.appendChild(action(t("prop.rotate"), "R", () => this.rotateSelected()));
+    actions.appendChild(action(t(comp.locked ? "prop.unlock" : "prop.lock"), "L", () => this.lockSelected()));
+    actions.appendChild(action(t("prop.duplicate"), "Ctrl+D", () => this.duplicateSelected()));
+    actions.appendChild(action(t("prop.delete"), "Delete", () => this.deleteSelected()));
     box.appendChild(actions);
 
     const valueRow = document.createElement("div");
     valueRow.className = "pinrow";
     const valueTag = document.createElement("span");
     valueTag.className = "pintag";
-    valueTag.textContent = "value";
+    valueTag.textContent = t("prop.value");
     const valueInput = document.createElement("input");
     valueInput.type = "text";
     valueInput.value = comp.value || "";
@@ -631,7 +640,7 @@ export class App {
     groupRow.className = "pinrow";
     const groupTag = document.createElement("span");
     groupTag.className = "pintag";
-    groupTag.textContent = "group";
+    groupTag.textContent = t("prop.tagGroup");
     const groupInput = document.createElement("input");
     groupInput.type = "text";
     groupInput.value = comp.group || "";
@@ -841,7 +850,7 @@ export class App {
     box.innerHTML = "";
     const refs = this._selectedRefs();
     const head = document.createElement("div");
-    head.textContent = `${refs.length} parts selected`;
+    head.textContent = t("prop.multi", { n: refs.length });
     box.appendChild(head);
     const names = document.createElement("div");
     names.className = "muted";
@@ -858,11 +867,11 @@ export class App {
       b.addEventListener("click", fn);
       return b;
     };
-    row.appendChild(action("Rotate", "rotate all (R)", () => this.rotateSelected()));
-    row.appendChild(action("Lock", "lock/unlock all (L)", () => this.lockSelected()));
-    row.appendChild(action("Group", "add all to the active group (G)", () => this._addToGroup()));
-    row.appendChild(action("Duplicate", "duplicate all (Ctrl+D)", () => this.duplicateSelected()));
-    row.appendChild(action("Delete", "delete all (Delete)", () => this.deleteSelected()));
+    row.appendChild(action(t("prop.rotate"), "R", () => this.rotateSelected()));
+    row.appendChild(action(t("prop.lock"), "L", () => this.lockSelected()));
+    row.appendChild(action(t("prop.group"), "G", () => this._addToGroup()));
+    row.appendChild(action(t("prop.duplicate"), "Ctrl+D", () => this.duplicateSelected()));
+    row.appendChild(action(t("prop.delete"), "Delete", () => this.deleteSelected()));
     box.appendChild(row);
   }
 
@@ -939,7 +948,7 @@ export class App {
         srow.className = "pinrow";
         const sbtn = document.createElement("button");
         sbtn.className = "minibtn";
-        sbtn.textContent = `Split ${mine.length} pin(s) of selection`;
+        sbtn.textContent = t("prop.splitSelection", { n: mine.length });
         sbtn.title = "move the selected parts' pins here into a new net";
         sbtn.disabled = !ed;
         sbtn.addEventListener("click", () => {
@@ -968,7 +977,7 @@ export class App {
       }
       const mbtn = document.createElement("button");
       mbtn.className = "minibtn";
-      mbtn.textContent = "Merge into";
+      mbtn.textContent = t("prop.mergeInto");
       mbtn.title = "join this net with the chosen one";
       mbtn.disabled = !ed;
       mbtn.addEventListener("click", () => {
@@ -990,7 +999,7 @@ export class App {
     row.className = "pinrow";
     const del = document.createElement("button");
     del.className = "minibtn";
-    del.textContent = "Delete net";
+    del.textContent = t("prop.deleteNet");
     del.disabled = !ed;
     del.addEventListener("click", () => {
       this.snapshot();
@@ -1026,7 +1035,7 @@ export class App {
     }
     const del = document.createElement("button");
     del.className = "minibtn";
-    del.textContent = "Delete";
+    del.textContent = t("prop.delete");
     del.disabled = !ed;
     del.addEventListener("click", () => this.deleteSelected());
     row.appendChild(del);
@@ -1035,7 +1044,7 @@ export class App {
 
   openNewPart() {
     this._editingPart = null;
-    document.getElementById("partTitle").textContent = "New pin bar";
+    document.getElementById("partTitle").textContent = t("part.newTitle");
     document.getElementById("pLabel").value = "Header";
     document.getElementById("pDouble").value = "no";
     document.getElementById("pCount").value = 8;
@@ -1049,7 +1058,7 @@ export class App {
 
   openEditPart(spec) {
     this._editingPart = spec;
-    document.getElementById("partTitle").textContent = "Edit pin bar";
+    document.getElementById("partTitle").textContent = t("part.editTitle");
     document.getElementById("pLabel").value = spec.label || "";
     document.getElementById("pDouble").value = spec.doubleRow ? "yes" : "no";
     document.getElementById("pCount").value = spec.count || 1;
@@ -1589,14 +1598,14 @@ export class App {
       return;
     }
     const body = document.getElementById("sizeBody");
-    body.textContent = "computing candidate sizes…";
+    body.textContent = t("size.computing");
     document.getElementById("sizeDlg").showModal();
     this._busy = true;
     document.body.classList.add("busy");
     const t0 = Date.now();
     try {
       const list = await this._computeSizes((i, n, d) => {
-        body.textContent = `computing ${i}/${n}: ${d.w}x${d.h}… ${((Date.now() - t0) / 1000).toFixed(0)}s`;
+        body.textContent = t("size.progress", { i, n, w: d.w, h: d.h, s: ((Date.now() - t0) / 1000).toFixed(0) });
       });
       this._renderSizeResults(list);
     } catch (err) {
@@ -1658,12 +1667,12 @@ export class App {
     const body = document.getElementById("sizeBody");
     body.innerHTML = "";
     if (!list.length) {
-      body.textContent = "no feasible option found";
+      body.textContent = t("size.none");
       return;
     }
     const intro = document.createElement("div");
     intro.className = "muted";
-    intro.textContent = "Non-dominated options (smaller board ↔ fewer jumpers/cuts). Click Apply.";
+    intro.textContent = t("size.intro");
     body.appendChild(intro);
     for (const r of list) {
       const row = document.createElement("div");
@@ -1673,7 +1682,7 @@ export class App {
       label.textContent = `${r.w}×${r.h} (${(r.w * 2.54).toFixed(1)}×${(r.h * 2.54).toFixed(1)} mm) — ${r.jumpers} jumpers, ${r.cuts} cuts`;
       const apply = document.createElement("button");
       apply.className = "minibtn";
-      apply.textContent = "Apply";
+      apply.textContent = t("size.apply");
       apply.addEventListener("click", () => this._applySize(r.board));
       row.appendChild(label);
       row.appendChild(apply);
@@ -2274,6 +2283,33 @@ ${blocks.join("\n")}
     document.getElementById("useThis").addEventListener("click", () => this.useThis());
     on("sizeSearch", () => this.openSizeSearch());
     document.getElementById("sizeClose").addEventListener("click", () => document.getElementById("sizeDlg").close());
+    document.getElementById("theme").addEventListener("change", (e) => {
+      this.theme = e.target.value;
+      try {
+        localStorage.setItem(THEME_KEY, this.theme);
+      } catch {
+        // storage unavailable: theme just won't persist
+      }
+      this.render();
+    });
+    try {
+      window.matchMedia?.("(prefers-color-scheme: light)")?.addEventListener?.("change", () => {
+        if (this.theme === "auto") this.render();
+      });
+    } catch {
+      // no matchMedia: auto stays on the default
+    }
+    document.getElementById("lang").addEventListener("change", (e) => {
+      this.lang = e.target.value;
+      try {
+        localStorage.setItem(LANG_KEY, this.lang);
+      } catch {
+        // storage unavailable: language just won't persist
+      }
+      setLang(this._resolveLang());
+      applyStatic();
+      this.render();
+    });
     document.getElementById("saveGo").addEventListener("click", () => this._confirmSave());
     document.getElementById("saveCancel").addEventListener("click", () => document.getElementById("saveDlg").close());
     document.getElementById("saveName").addEventListener("keydown", (e) => {
@@ -2314,6 +2350,52 @@ ${blocks.join("\n")}
   }
 
   // -- zoom / pan (viewBox transform; interactions use getScreenCTM so they stay correct) --
+
+  // -- theme ---------------------------------------------------------------------
+
+  _loadTheme() {
+    try {
+      const t = localStorage.getItem(THEME_KEY);
+      return t === "light" || t === "dark" ? t : "auto";
+    } catch {
+      return "auto";
+    }
+  }
+
+  _loadLang() {
+    try {
+      const l = localStorage.getItem(LANG_KEY);
+      return l === "en" || l === "pt" ? l : "auto";
+    } catch {
+      return "auto";
+    }
+  }
+
+  _resolveLang() {
+    if (this.lang === "en" || this.lang === "pt") return this.lang;
+    try {
+      return String(navigator.language || "en").toLowerCase().startsWith("pt") ? "pt" : "en";
+    } catch {
+      return "en";
+    }
+  }
+
+  _effectiveTheme() {
+    if (this.theme === "light" || this.theme === "dark") return this.theme;
+    try {
+      return window.matchMedia?.("(prefers-color-scheme: light)")?.matches ? "light" : "dark";
+    } catch {
+      return "dark";
+    }
+  }
+
+  _applyTheme() {
+    const eff = this._effectiveTheme();
+    document.documentElement.dataset.theme = eff;
+    const sel = document.getElementById("theme");
+    if (sel) sel.value = this.theme;
+    return eff;
+  }
 
   _viewBase() {
     const p = this._shownProject();

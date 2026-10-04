@@ -152,6 +152,7 @@ function queryAll(root, sel) {
 export function installDom() {
   const byId = new Map();
   const body = new El("body");
+  const documentElement = new El("html");
   const doc = new El("#document");
   const listeners = {};
   const storage = new Map();
@@ -167,6 +168,7 @@ export function installDom() {
 
   globalThis.document = {
     body,
+    documentElement,
     title: "",
     activeElement: null,
     getElementById,
@@ -187,6 +189,7 @@ export function installDom() {
   globalThis.window = {
     addEventListener: () => {},
     removeEventListener: () => {},
+    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
     prompt: () => null,
     confirm: () => true,
     open: () => null,

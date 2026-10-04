@@ -25,89 +25,104 @@
       </svg>
       Stripboard Studio
     </strong>
-    <button id="new">New</button>
-    <button id="open">Open</button>
-    <button id="save">Save</button>
-    <button id="saveAs">Save As</button>
-    <span id="saveState" class="savestate" title="whether the board has unsaved changes"></span>
+    <button id="new" data-i18n="toolbar.new">New</button>
+    <button id="open" data-i18n="toolbar.open">Open</button>
+    <button id="save" data-i18n="toolbar.save">Save</button>
+    <button id="saveAs" data-i18n="toolbar.saveAs">Save As</button>
+    <span id="saveState" class="savestate" data-i18n-title="toolbar.saveState"></span>
     <span class="sep"></span>
-    <label>Cols <input id="cols" type="number" min="4" max="100" value="55"></label>
-    <label>Rows <input id="rows" type="number" min="4" max="60" value="24"></label>
+    <label><span data-i18n="toolbar.cols">Cols</span> <input id="cols" type="number" min="4" max="100" value="55"></label>
+    <label><span data-i18n="toolbar.rows">Rows</span> <input id="rows" type="number" min="4" max="60" value="24"></label>
     <span class="sep"></span>
-    <button id="undo">Undo</button>
-    <button id="redo">Redo</button>
+    <button id="undo" data-i18n="toolbar.undo">Undo</button>
+    <button id="redo" data-i18n="toolbar.redo">Redo</button>
     <span class="sep"></span>
-    <button id="connect" class="toggle" title="connect two pins (C)">Connect</button>
-    <button id="addCut" class="toggle" title="cut a strip (X)">Cut</button>
-    <button id="addJumper" class="toggle" title="draw a jumper (J)">Jumper</button>
-    <button id="addMount" class="toggle" title="place a mounting hole (M)">Mount</button>
+    <button id="connect" class="toggle" data-i18n="tool.connect" data-i18n-title="tool.connect.title">Connect</button>
+    <button id="addCut" class="toggle" data-i18n="tool.cut" data-i18n-title="tool.cut.title">Cut</button>
+    <button id="addJumper" class="toggle" data-i18n="tool.jumper" data-i18n-title="tool.jumper.title">Jumper</button>
+    <button id="addMount" class="toggle" data-i18n="tool.mount" data-i18n-title="tool.mount.title">Mount</button>
     <span class="sep"></span>
     <details class="menu" id="viewMenu">
-      <summary>View</summary>
+      <summary data-i18n="menu.view">View</summary>
       <div class="menu-items">
-        <label class="check"><input type="checkbox" id="lc-parts" checked> parts</label>
-        <label class="check"><input type="checkbox" id="lc-wires" checked> wires</label>
-        <label class="check"><input type="checkbox" id="lc-cuts" checked> cuts</label>
-        <label class="check"><input type="checkbox" id="lc-copper" checked> copper</label>
-        <label class="check"><input type="checkbox" id="lc-nets" checked> nets</label>
-        <label class="check"><input type="checkbox" id="lc-grid" checked> grid 5x5</label>
+        <label class="check"><input type="checkbox" id="lc-parts" checked> <span data-i18n="view.parts">parts</span></label>
+        <label class="check"><input type="checkbox" id="lc-wires" checked> <span data-i18n="view.wires">wires</span></label>
+        <label class="check"><input type="checkbox" id="lc-cuts" checked> <span data-i18n="view.cuts">cuts</span></label>
+        <label class="check"><input type="checkbox" id="lc-copper" checked> <span data-i18n="view.copper">copper</span></label>
+        <label class="check"><input type="checkbox" id="lc-nets" checked> <span data-i18n="view.nets">nets</span></label>
+        <label class="check"><input type="checkbox" id="lc-grid" checked> <span data-i18n="view.grid">grid 5x5</span></label>
         <div class="menusep"></div>
-        <label class="check"><input type="checkbox" id="copper"> copper side (mirrored)</label>
-        <label class="check"><input type="checkbox" id="names" checked> pin names</label>
-        <label class="check"><input type="checkbox" id="connections"> connections (always)</label>
-        <label class="check"><input type="checkbox" id="mountzones" checked> mountable zones (safe to drill)</label>
-        <label class="check"><input type="checkbox" id="diagonals"> diagonal jumpers (routing)</label>
-        <label class="check"><input type="checkbox" id="schematic"> schematic view</label>
+        <label class="check"><input type="checkbox" id="copper"> <span data-i18n="view.copperSide">copper side (mirrored)</span></label>
+        <label class="check"><input type="checkbox" id="names" checked> <span data-i18n="view.pinNames">pin names</span></label>
+        <label class="check"><input type="checkbox" id="connections"> <span data-i18n="view.connections">connections (always)</span></label>
+        <label class="check"><input type="checkbox" id="mountzones" checked> <span data-i18n="view.mountZones">mountable zones (safe to drill)</span></label>
+        <label class="check"><input type="checkbox" id="diagonals"> <span data-i18n="view.diagonals">diagonal jumpers (routing)</span></label>
+        <label class="check"><input type="checkbox" id="schematic"> <span data-i18n="view.schematic">schematic view</span></label>
+        <div class="menusep"></div>
+        <label class="check"><span data-i18n="view.theme">Theme</span>
+          <select id="theme">
+            <option value="auto" data-i18n="theme.auto">Auto</option>
+            <option value="light" data-i18n="theme.light">Light</option>
+            <option value="dark" data-i18n="theme.dark">Dark</option>
+          </select>
+        </label>
+        <label class="check"><span data-i18n="view.language">Language</span>
+          <select id="lang">
+            <option value="auto" data-i18n="lang.auto">Auto</option>
+            <option value="en">English</option>
+            <option value="pt">Português</option>
+          </select>
+        </label>
       </div>
     </details>
     <details class="menu" id="exportMenu">
-      <summary>Export</summary>
+      <summary data-i18n="menu.export">Export</summary>
       <div class="menu-items">
-        <button id="print">Print / PDF (1:1)</button>
-        <button id="netlist">Netlist…</button>
-        <button id="ascii">Text (ASCII)…</button>
+        <button id="print" data-i18n="export.print">Print / PDF (1:1)</button>
+        <button id="netlist" data-i18n="export.netlist">Netlist…</button>
+        <button id="ascii" data-i18n="export.ascii">Text (ASCII)…</button>
       </div>
     </details>
     <span id="status" class="status"></span>
   </header>
   <main>
     <aside id="palette">
-      <h3>Parts</h3>
-      <button id="newPart" class="wide">+ New pin bar</button>
-      <input id="partSearch" type="search" placeholder="search parts…" autocomplete="off">
+      <h3 data-i18n="palette.parts">Parts</h3>
+      <button id="newPart" class="wide" data-i18n="palette.new">+ New pin bar</button>
+      <input id="partSearch" type="search" data-i18n-placeholder="palette.search" placeholder="search parts…" autocomplete="off">
       <div id="palette-list" class="list"></div>
     </aside>
     <div id="center">
       <div class="vtabbar">
-        <button class="vtab active" data-vtab="edit">Edit</button>
-        <button class="vtab" data-vtab="solve">Solve</button>
-        <button class="vtab" data-vtab="easy">Easy</button>
-        <button class="vtab" data-vtab="optimize">Balanced</button>
-        <button class="vtab" data-vtab="compact">Compact</button>
-        <button class="vtab" data-vtab="trim">Trim</button>
+        <button class="vtab active" data-vtab="edit" data-i18n="vtab.edit">Edit</button>
+        <button class="vtab" data-vtab="solve" data-i18n="vtab.solve">Solve</button>
+        <button class="vtab" data-vtab="easy" data-i18n="vtab.easy">Easy</button>
+        <button class="vtab" data-vtab="optimize" data-i18n="vtab.balanced">Balanced</button>
+        <button class="vtab" data-vtab="compact" data-i18n="vtab.compact">Compact</button>
+        <button class="vtab" data-vtab="trim" data-i18n="vtab.trim">Trim</button>
         <span class="grow"></span>
-        <button id="sizeSearch" title="search board sizes (Pareto trade-offs)">Size…</button>
+        <button id="sizeSearch" data-i18n="vtab.size" data-i18n-title="vtab.size.title">Size…</button>
         <span id="tabNote" class="muted"></span>
-        <button id="useThis" class="primary" style="display:none">Use this</button>
+        <button id="useThis" class="primary" style="display:none" data-i18n="vtab.useThis">Use this</button>
       </div>
       <div id="canvasWrap">
-        <div id="readonlyBar" class="readonlybar" style="display:none">
-          Read-only result — editing is disabled. Click <b>Use this</b> (top right) to copy it to the Edit board.
+        <div id="readonlyBar" class="readonlybar" style="display:none" data-i18n="readonly">
+          Read-only result — editing is disabled. Click “Use this” (top right) to copy it to the Edit board.
         </div>
         <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
         <div id="zoomCtl">
           <span id="zoomPct">100%</span>
-          <button id="zoomOut" title="zoom out (−)">−</button>
-          <button id="zoomFit" title="fit to window (0)">⤢</button>
-          <button id="zoomIn" title="zoom in (+)">+</button>
+          <button id="zoomOut" data-i18n-title="zoom.out.title" title="zoom out (−)">−</button>
+          <button id="zoomFit" data-i18n-title="zoom.fit.title" title="fit to window (0)">⤢</button>
+          <button id="zoomIn" data-i18n-title="zoom.in.title" title="zoom in (+)">+</button>
         </div>
       </div>
     </div>
     <aside id="panel">
       <div class="tabbar">
-        <button class="tab active" data-tab="props">Properties</button>
-        <button class="tab" data-tab="nets">Nets</button>
-        <button class="tab" data-tab="problems">Problems</button>
+        <button class="tab active" data-tab="props" data-i18n="tab.properties">Properties</button>
+        <button class="tab" data-tab="nets" data-i18n="tab.nets">Nets</button>
+        <button class="tab" data-tab="problems" data-i18n="tab.problems">Problems</button>
       </div>
       <div class="tabpane" id="pane-props">
         <div id="selection" class="box">(none)</div>
@@ -125,83 +140,83 @@
     <div class="dlgbar">
       <strong id="partTitle">New pin bar</strong>
       <span class="grow"></span>
-      <button id="partCancel">Cancel</button>
-      <button id="partCreate" class="primary">Create</button>
+      <button id="partCancel" data-i18n="common.cancel">Cancel</button>
+      <button id="partCreate" class="primary" data-i18n="common.create">Create</button>
     </div>
     <div class="form">
-      <label>Label <input id="pLabel" type="text" value="Header" size="16"></label>
-      <label>Type
+      <label><span data-i18n="part.label">Label</span> <input id="pLabel" type="text" value="Header" size="16"></label>
+      <label><span data-i18n="part.type">Type</span>
         <select id="pDouble">
-          <option value="no">single row</option>
-          <option value="yes">double row</option>
+          <option value="no" data-i18n="part.single">single row</option>
+          <option value="yes" data-i18n="part.double">double row</option>
         </select>
       </label>
-      <label>Pins <input id="pCount" type="number" min="1" max="60" value="8"></label>
-      <label id="rowGap">Gap between rows (holes) <input id="pGap" type="number" min="2" max="30" value="3"></label>
-      <label id="rowPrefix">Pin prefix <input id="pPrefix" type="text" value="" size="8" placeholder="(none)"></label>
-      <label id="rowLeft">Left prefix <input id="pLeft" type="text" value="L" size="8"></label>
-      <label id="rowRight">Right prefix <input id="pRight" type="text" value="R" size="8"></label>
+      <label><span data-i18n="part.pins">Pins</span> <input id="pCount" type="number" min="1" max="60" value="8"></label>
+      <label id="rowGap"><span data-i18n="part.gap">Gap between rows (holes)</span> <input id="pGap" type="number" min="2" max="30" value="3"></label>
+      <label id="rowPrefix"><span data-i18n="part.prefix">Pin prefix</span> <input id="pPrefix" type="text" value="" size="8" placeholder="(none)"></label>
+      <label id="rowLeft"><span data-i18n="part.left">Left prefix</span> <input id="pLeft" type="text" value="L" size="8"></label>
+      <label id="rowRight"><span data-i18n="part.right">Right prefix</span> <input id="pRight" type="text" value="R" size="8"></label>
     </div>
   </dialog>
   <dialog id="saveDlg">
     <div class="dlgbar">
-      <strong>Save board as</strong>
+      <strong data-i18n="save.title">Save board as</strong>
       <span class="grow"></span>
-      <button id="saveCancel">Cancel</button>
-      <button id="saveGo" class="primary">Save</button>
+      <button id="saveCancel" data-i18n="common.cancel">Cancel</button>
+      <button id="saveGo" class="primary" data-i18n="common.save">Save</button>
     </div>
     <div class="form">
-      <label>File name <input id="saveName" type="text" size="30" placeholder="board"></label>
+      <label><span data-i18n="save.fileName">File name</span> <input id="saveName" type="text" size="30" placeholder="board"></label>
     </div>
   </dialog>
   <dialog id="sizeDlg">
     <div class="dlgbar">
-      <strong>Board size — trade-offs</strong>
+      <strong data-i18n="size.title">Board size — trade-offs</strong>
       <span class="grow"></span>
-      <button id="sizeClose">Close</button>
+      <button id="sizeClose" data-i18n="common.close">Close</button>
     </div>
-    <div class="form" id="sizeBody">computing…</div>
+    <div class="form" id="sizeBody" data-i18n="size.computing">computing…</div>
   </dialog>
   <dialog id="printDlg">
     <div class="dlgbar">
-      <strong>Print / PDF (1:1)</strong>
+      <strong data-i18n="print.title">Print / PDF (1:1)</strong>
       <span class="grow"></span>
-      <button id="printCancel">Cancel</button>
-      <button id="printGo" class="primary">Print</button>
+      <button id="printCancel" data-i18n="common.cancel">Cancel</button>
+      <button id="printGo" class="primary" data-i18n="print.go">Print</button>
     </div>
     <div class="form">
-      <label>Origin (top-left hole) <input id="printOrigin" type="text" value="A1" size="6" placeholder="A1"></label>
-      <div class="sectiontitle">Include</div>
-      <label class="check"><input type="checkbox" id="pc-front" checked> Component side (1:1)</label>
-      <label class="check"><input type="checkbox" id="pc-copper" checked> Copper side (mirrored, no parts)</label>
-      <label class="check"><input type="checkbox" id="pc-holes" checked> Mounting holes</label>
-      <label class="check"><input type="checkbox" id="pc-cuts" checked> Cuts</label>
-      <label class="check"><input type="checkbox" id="pc-jumpers" checked> Jumpers</label>
-      <label class="check"><input type="checkbox" id="pc-bom" checked> BOM</label>
-      <label class="check"><input type="checkbox" id="pc-steps" checked> Assembly steps (+ net check)</label>
+      <label><span data-i18n="print.origin">Origin (top-left hole)</span> <input id="printOrigin" type="text" value="A1" size="6" placeholder="A1"></label>
+      <div class="sectiontitle" data-i18n="print.include">Include</div>
+      <label class="check"><input type="checkbox" id="pc-front" checked> <span data-i18n="print.front">Component side (1:1)</span></label>
+      <label class="check"><input type="checkbox" id="pc-copper" checked> <span data-i18n="print.copper">Copper side (mirrored, no parts)</span></label>
+      <label class="check"><input type="checkbox" id="pc-holes" checked> <span data-i18n="print.holes">Mounting holes</span></label>
+      <label class="check"><input type="checkbox" id="pc-cuts" checked> <span data-i18n="print.cuts">Cuts</span></label>
+      <label class="check"><input type="checkbox" id="pc-jumpers" checked> <span data-i18n="print.jumpers">Jumpers</span></label>
+      <label class="check"><input type="checkbox" id="pc-bom" checked> <span data-i18n="print.bom">BOM</span></label>
+      <label class="check"><input type="checkbox" id="pc-steps" checked> <span data-i18n="print.steps">Assembly steps (+ net check)</span></label>
     </div>
   </dialog>
   <dialog id="netDlg">
     <div class="dlgbar">
-      <strong>Netlist</strong>
+      <strong data-i18n="net.title">Netlist</strong>
       <select id="netFormat">
         <option value="json">JSON</option>
         <option value="spice">SPICE</option>
         <option value="kicad">KiCad (.net)</option>
       </select>
       <span class="grow"></span>
-      <button id="netCopy">Copy</button>
-      <button id="netDownload">Download</button>
-      <button id="netClose">Close</button>
+      <button id="netCopy" data-i18n="common.copy">Copy</button>
+      <button id="netDownload" data-i18n="common.download">Download</button>
+      <button id="netClose" data-i18n="common.close">Close</button>
     </div>
     <pre id="netText"></pre>
   </dialog>
   <dialog id="asciiDlg">
     <div class="dlgbar">
-      <strong>Board as text</strong>
+      <strong data-i18n="ascii.title">Board as text</strong>
       <span class="grow"></span>
-      <button id="asciiCopy">Copy</button>
-      <button id="asciiClose">Close</button>
+      <button id="asciiCopy" data-i18n="common.copy">Copy</button>
+      <button id="asciiClose" data-i18n="common.close">Close</button>
     </div>
     <pre id="asciiText"></pre>
   </dialog>

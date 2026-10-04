@@ -112,6 +112,19 @@ test("Save As uses a dialog and never reuses a name", (t) => {
   assert.equal(app.fileName, "board (1)", "second save gets a new name");
 });
 
+test("theme applies to the document and persists", (t) => {
+  const app = makeApp(t);
+  app.theme = "light";
+  app.render();
+  assert.equal(dom.document.documentElement.dataset.theme, "light");
+  const sel = dom.getElementById("theme");
+  sel.value = "dark";
+  sel.dispatch("change", { target: sel });
+  assert.equal(app.theme, "dark");
+  assert.equal(dom.document.documentElement.dataset.theme, "dark");
+  assert.equal(globalThis.localStorage.getItem("stripboard-studio:theme"), "dark");
+});
+
 test("undo history is capped", (t) => {
   const app = makeApp(t);
   for (let i = 0; i < 130; i++) app.pushHistory(JSON.stringify(app.project.toJSON()));

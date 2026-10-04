@@ -39,25 +39,26 @@ export function render(svg, state) {
   const colText = (x) => String(origin.col + x - 1);
   const rowText = (y) => rowLetter(origin.row + rows - y);
   const mono = state.mono === true; // greyscale/BW, for printing without a colour printer
+  const light = !mono && state.theme === "light"; // light UI theme (not the mono print)
   const C = {
-    boardBg: mono ? "#ffffff" : "#0f5132",
-    boardEdge: mono ? "#000000" : "#062d1c",
+    boardBg: mono ? "#ffffff" : light ? "#e4ecdd" : "#0f5132",
+    boardEdge: mono ? "#000000" : light ? "#7fa072" : "#062d1c",
     strip: mono ? "#d9d9d9" : "#c48a3e",
-    stripEdge: mono ? "#7a7a7a" : "#c48a3e",
-    hole: mono ? "#ffffff" : "#e8e8e8",
+    stripEdge: mono ? "#7a7a7a" : light ? "#9a6a2a" : "#c48a3e",
+    hole: mono ? "#ffffff" : light ? "#fbfbf6" : "#e8e8e8",
     holeEdge: mono ? "#8a8a8a" : "#8a8a8a",
-    grid: mono ? "#c0c0c0" : "#ffffff",
-    cut: mono ? "#000000" : "#ff5555",
-    jumper: mono ? "#000000" : "#4c9aff",
-    jumperDark: mono ? "#000000" : "#0b2b52",
+    grid: mono ? "#c0c0c0" : light ? "#c3d2bb" : "#ffffff",
+    cut: mono ? "#000000" : light ? "#d32f2f" : "#ff5555",
+    jumper: mono ? "#000000" : light ? "#1f6feb" : "#4c9aff",
+    jumperDark: mono ? "#000000" : light ? "#0b3a80" : "#0b2b52",
     comp: mono ? "#ffffff" : "#f0efe9",
-    compEdge: mono ? "#000000" : "#202020",
-    locked: mono ? "#555555" : "#b03ca0",
-    sel: mono ? "#000000" : "#ffcc33",
+    compEdge: mono ? "#000000" : light ? "#333333" : "#202020",
+    locked: mono ? "#555555" : light ? "#8e24aa" : "#b03ca0",
+    sel: mono ? "#000000" : light ? "#e6a100" : "#ffcc33",
     text: mono ? "#000000" : "#101010",
-    axis: mono ? "#000000" : "#9aa2ac",
-    border: mono ? "#000000" : "#ffd54a",
-    banner: mono ? "#000000" : "#ff6b6b",
+    axis: mono ? "#000000" : light ? "#5c6670" : "#9aa2ac",
+    border: mono ? "#000000" : light ? "#b8860b" : "#ffd54a",
+    banner: mono ? "#000000" : light ? "#d32f2f" : "#ff6b6b",
     pin: mono ? "#000000" : "#202020",
   };
   const L = state.layers ?? { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
