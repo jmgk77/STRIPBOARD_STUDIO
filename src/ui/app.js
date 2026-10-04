@@ -58,6 +58,7 @@ export class App {
     this._editBefore = null;
     this._statusTimer = null;
     this._paletteQuery = "";
+    this._printOrigin = "A1"; // remembered print origin
     this._paletteOpen = new Set(); // palette groups the user expanded (default: minimized)
     this._recentParts = this._loadRecent();
     this.fileName = null;
@@ -1446,20 +1447,40 @@ export class App {
     }
   }
 
-  printBoards() {
+  openPrintDialog() {
     const project = this._shownProject();
-    if (!this._solvedShown()) {
-      this._status("nothing to print yet — run Solve first");
+    if (project.components.size === 0 && !this._solvedShown()) {
+      this._status("nothing to print yet — add parts or run Solve first");
       return;
     }
+    document.getElementById("printOrigin").value = this._printOrigin || "A1";
+    document.getElementById("printDlg").showModal();
+  }
+
+  _doPrint() {
+    const project = this._shownProject();
     const { cols, rows } = project;
-    const ans = window.prompt("Print origin — the reference of the top-left hole (e.g. A1 or F15)", "A1");
-    if (ans == null) return;
+    const ans = document.getElementById("printOrigin").value;
+    this._printOrigin = ans;
     const m = /^\s*([A-Za-z]+)\s*(\d+)\s*$/.exec(ans);
     const origin = m ? { row: lettersToNum(m[1]), col: Number(m[2]) } : { row: 1, col: 1 };
     const colText = (x) => String(origin.col + x - 1);
     const rowText = (y) => rowLetter(origin.row + rows - y);
     const cell = (x, y) => `${rowText(y)}${colText(x)}`;
+    const want = (id) => document.getElementById(id).checked;
+    const sections = {
+      front: want("pc-front"),
+      copper: want("pc-copper"),
+      holes: want("pc-holes"),
+      cuts: want("pc-cuts"),
+      jumpers: want("pc-jumpers"),
+      bom: want("pc-bom"),
+      steps: want("pc-steps"),
+    };
+    if (!Object.values(sections).some(Boolean)) {
+      this._status("pick at least one section to print");
+      return;
+    }
 
     const SVG_NS = "http://www.w3.org/2000/svg";
     const build = (view, parts) => {
@@ -1487,9 +1508,6 @@ export class App {
       svg.setAttribute("height", `${(vb.height * mm).toFixed(2)}mm`);
       return svg;
     };
-    const front = build("front", true);
-    const copper = build("copper", false); // copper side WITHOUT components
-
     const cutList = [...project.cuts].sort().map((c) => {
       const [x, y] = c.split(",").map(Number);
       return cell(x, y);
@@ -1529,6 +1547,19 @@ export class App {
       netRows,
     ].join("\n");
 
+    const blocks = [];
+    if (sections.front) {
+      blocks.push(`<h3>Component side (1:1) — origin ${rowLetter(origin.row)}${origin.col}</h3><div class="page">${build("front", true).outerHTML}</div>`);
+    }
+    if (sections.copper) {
+      blocks.push(`<h3>Copper side, mirrored (1:1, no components)</h3><div class="page">${build("copper", false).outerHTML}</div>`);
+    }
+    if (sections.holes) blocks.push(`<h3>Mounting holes (${mounts.size}, Ø${project.mountDiameter} mm)</h3><pre>${mountList}</pre>`);
+    if (sections.cuts) blocks.push(`<h3>Cuts (${project.cuts.size})</h3><pre>${cutList}</pre>`);
+    if (sections.jumpers) blocks.push(`<h3>Jumpers (${project.jumpers.length})</h3><pre>${jumperList}</pre>`);
+    if (sections.bom) blocks.push(`<h3>BOM</h3><pre>${bomRows}</pre>`);
+    if (sections.steps) blocks.push(`<h3>Assembly steps</h3><pre>${steps}</pre>`);
+
     const win = window.open("", "_blank");
     if (!win) {
       this._status("allow pop-ups to print");
@@ -1537,17 +1568,12 @@ export class App {
     win.document.write(`<!doctype html><html><head><title>${project.title} — print 1:1</title>
 <style>@page{size:A4;margin:10mm} body{font:12px monospace;margin:0;color:#000} h3{margin:8px 0 4px} svg{display:block;height:auto} .page{margin-bottom:10mm} pre{white-space:pre-wrap;font:12px monospace}</style>
 </head><body>
-<h3>Component side (1:1) — origin ${rowLetter(origin.row)}${origin.col}</h3><div class="page">${front.outerHTML}</div>
-<h3>Copper side, mirrored (1:1, no components)</h3><div class="page">${copper.outerHTML}</div>
-<h3>Mounting holes (${mounts.size}, Ø${project.mountDiameter} mm)</h3><pre>${mountList}</pre>
-<h3>Cuts (${project.cuts.size})</h3><pre>${cutList}</pre>
-<h3>Jumpers (${project.jumpers.length})</h3><pre>${jumperList}</pre>
-<h3>BOM</h3><pre>${bomRows}</pre>
-<h3>Assembly steps</h3><pre>${steps}</pre>
+${blocks.join("\n")}
 </body></html>`);
     win.document.close();
     win.focus();
     win.print();
+    document.getElementById("printDlg").close();
     this._status("print window opened (print at 100% / Save as PDF)");
   }
 
@@ -1791,7 +1817,9 @@ export class App {
     on("undo", () => this.undo());
     on("redo", () => this.redo());
 
-    on("print", () => this.printBoards());
+    on("print", () => this.openPrintDialog());
+    document.getElementById("printCancel").addEventListener("click", () => document.getElementById("printDlg").close());
+    document.getElementById("printGo").addEventListener("click", () => this._doPrint());
     for (const el of document.querySelectorAll("#exportMenu .menu-items button")) {
       el.addEventListener("click", () => {
         document.getElementById("exportMenu").open = false;

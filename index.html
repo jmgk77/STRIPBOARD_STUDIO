@@ -128,6 +128,25 @@
       <label id="rowRight">Right prefix <input id="pRight" type="text" value="R" size="8"></label>
     </div>
   </dialog>
+  <dialog id="printDlg">
+    <div class="dlgbar">
+      <strong>Print / PDF (1:1)</strong>
+      <span class="grow"></span>
+      <button id="printCancel">Cancel</button>
+      <button id="printGo" class="primary">Print</button>
+    </div>
+    <div class="form">
+      <label>Origin (top-left hole) <input id="printOrigin" type="text" value="A1" size="6" placeholder="A1"></label>
+      <div class="sectiontitle">Include</div>
+      <label class="check"><input type="checkbox" id="pc-front" checked> Component side (1:1)</label>
+      <label class="check"><input type="checkbox" id="pc-copper" checked> Copper side (mirrored, no parts)</label>
+      <label class="check"><input type="checkbox" id="pc-holes" checked> Mounting holes</label>
+      <label class="check"><input type="checkbox" id="pc-cuts" checked> Cuts</label>
+      <label class="check"><input type="checkbox" id="pc-jumpers" checked> Jumpers</label>
+      <label class="check"><input type="checkbox" id="pc-bom" checked> BOM</label>
+      <label class="check"><input type="checkbox" id="pc-steps" checked> Assembly steps (+ net check)</label>
+    </div>
+  </dialog>
   <dialog id="netDlg">
     <div class="dlgbar">
       <strong>Netlist</strong>
