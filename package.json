@@ -1,6 +1,6 @@
 {
   "name": "stripboard-studio",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Browser tool to plan ESP32/Arduino shields on stripboard: place modules and headers, connect pins, check the copper, and optimize the layout.",
