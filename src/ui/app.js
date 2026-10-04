@@ -542,6 +542,7 @@ export class App {
     };
     actions.appendChild(action("Rotate", "rotate 90° (R)", () => this.rotateSelected()));
     actions.appendChild(action(comp.locked ? "Unlock" : "Lock", comp.locked ? "release (L)" : "pin it so Solve keeps it (L)", () => this.lockSelected()));
+    actions.appendChild(action("Duplicate", "copy this part (Ctrl+D)", () => this.duplicateSelected()));
     actions.appendChild(action("Delete", "remove (Delete)", () => this.deleteSelected()));
     box.appendChild(actions);
 
@@ -975,6 +976,65 @@ export class App {
     this.snapshot();
     comp.locked = !comp.locked;
     this.render();
+  }
+
+  /** A copy of `comp` placed at the nearest free spot (so it does not overlap at once). */
+  _duplicateSpot(comp, part) {
+    const { cols, rows } = this.project;
+    const occupied = new Set();
+    for (const other of this.project.components.values()) {
+      const op = LIBRARY.get(other.part);
+      if (!op) continue;
+      for (const p of componentPins(other, op)) occupied.add(`${p.x},${p.y}`);
+      const b = componentBody(other, op);
+      if (b) for (let yy = b.y0; yy <= b.y1; yy++) for (let xx = b.x0; xx <= b.x1; xx++) occupied.add(`${xx},${yy}`);
+    }
+    const probe = { ...comp, x: 0, y: 0 };
+    const fits = (x, y) => {
+      probe.x = x;
+      probe.y = y;
+      for (const p of componentPins(probe, part)) {
+        if (p.x < 1 || p.x > cols || p.y < 1 || p.y > rows) return false;
+        if (occupied.has(`${p.x},${p.y}`)) return false;
+      }
+      return true;
+    };
+    for (const [dx, dy] of [[1, 0], [2, 0], [0, 2], [1, 2], [-1, 0], [0, -2], [2, 2]]) {
+      const x = comp.x + dx;
+      const y = comp.y + dy;
+      if (x >= 1 && x <= cols && y >= 1 && y <= rows && fits(x, y)) return { x, y };
+    }
+    return this.findFreeSpot();
+  }
+
+  /** `Ctrl+D`: copy the selected part (same value/pins/span/rot and group). */
+  duplicateSelected() {
+    if (!this._guard()) return;
+    const comp = this.selected && this.project.components.get(this.selected);
+    if (!comp) {
+      this._status("select a part to duplicate");
+      return;
+    }
+    const part = LIBRARY.get(comp.part);
+    const prefix = comp.ref.match(/^[A-Za-z]+/)?.[0] || REF_PREFIX[part?.kind] || "J";
+    const ref = this.project.uniqueRef(prefix);
+    const spot = part ? this._duplicateSpot(comp, part) : this.findFreeSpot();
+    this.snapshot();
+    this.project.addComponent(new Component({
+      ref,
+      part: comp.part,
+      x: spot.x,
+      y: spot.y,
+      rot: comp.rot,
+      locked: false,
+      value: comp.value,
+      pinNames: comp.pinNames,
+      span: comp.span,
+      group: comp.group,
+    }));
+    this.selected = ref;
+    this._afterStructuralChange();
+    this._status(`duplicated ${comp.ref} → ${ref}`);
   }
 
   deleteSelected() {
@@ -2222,6 +2282,7 @@ ${blocks.join("\n")}
         if (lower === "s") return evt.preventDefault(), this.save();
         if (lower === "o") return evt.preventDefault(), document.getElementById("file").click();
         if (lower === "n") return evt.preventDefault(), this.newProject();
+        if (lower === "d") return evt.preventDefault(), this.duplicateSelected();
         if (lower === "r") return evt.preventDefault(), this.solve();
         return;
       }
