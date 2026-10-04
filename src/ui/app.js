@@ -50,7 +50,9 @@ export class App {
     this.svg = document.getElementById("board");
     this.project = starterProject();
     this.view = "front";
-    this.selected = null;
+    this.selected = null; // primary selection (Properties / anchor)
+    this.selection = new Set(); // full multi-selection of component refs
+    this.marquee = null; // rubber-band rectangle while dragging empty board
     this.pending = null;
     this.jumperStart = null; // first hole of a jumper being drawn by hand
     this.activeGroup = null; // group that G adds to (cleared by Esc)
@@ -133,6 +135,8 @@ export class App {
       library: LIBRARY,
       view: this.view,
       selected: this.selected,
+      selection: this._selectedRefs(),
+      marquee: this.marquee,
       selectedGroup: (this.selected && project.components.get(this.selected)?.group) || this.activeGroup || null,
       mountZones: this.showMountZones ? safeMountCells(project, LIBRARY) : null,
       pending: this.pending,
@@ -388,10 +392,8 @@ export class App {
         chip.appendChild(document.createTextNode(pinLabel(project, key)));
         chip.addEventListener("click", (e) => {
           e.stopPropagation();
-          if (this.selected === ref) {
-            this.selected = null;
-          } else {
-            this.selected = ref;
+          this._selectOnly(this.selected === ref ? null : ref);
+          if (this.selected) {
             this.selectedWire = null;
             this.selectedNet = null;
           }
@@ -449,10 +451,10 @@ export class App {
         const ref = issue.ref ?? issue.refs?.[0] ?? null;
         if (netId) {
           this.selectedNet = this.selectedNet === netId ? null : netId;
-          this.selected = null;
+          this._selectOnly(null);
           this.selectedWire = null;
         } else if (ref) {
-          this.selected = this.selected === ref ? null : ref;
+          this._selectOnly(this.selected === ref ? null : ref);
           this.selectedNet = null;
           this.selectedWire = null;
         }
@@ -467,6 +469,10 @@ export class App {
     const project = this._shownProject();
     const ed = this._canEdit();
     box.innerHTML = "";
+    if (this.selection.size > 1) {
+      this._multiBox(box, ed);
+      return;
+    }
     const comp = this.selected ? project.components.get(this.selected) : null;
     if (!comp) {
       if (this.pending) {
@@ -788,9 +794,40 @@ export class App {
     this._editBefore.delete(input);
     const old = comp.ref;
     this.project.renameComponent(old, next);
+    this.selection = new Set([next]);
     this.selected = next;
     this.render();
     this._status(`renamed ${old} to ${next}`);
+  }
+
+  /** Properties view when several parts are selected: bulk actions. */
+  _multiBox(box, ed) {
+    box.innerHTML = "";
+    const refs = this._selectedRefs();
+    const head = document.createElement("div");
+    head.textContent = `${refs.length} parts selected`;
+    box.appendChild(head);
+    const names = document.createElement("div");
+    names.className = "muted";
+    names.textContent = refs.slice(0, 12).join(", ") + (refs.length > 12 ? " …" : "");
+    box.appendChild(names);
+    const row = document.createElement("div");
+    row.className = "pinrow";
+    const action = (label, title, fn) => {
+      const b = document.createElement("button");
+      b.className = "minibtn";
+      b.textContent = label;
+      b.title = title;
+      b.disabled = !ed;
+      b.addEventListener("click", fn);
+      return b;
+    };
+    row.appendChild(action("Rotate", "rotate all (R)", () => this.rotateSelected()));
+    row.appendChild(action("Lock", "lock/unlock all (L)", () => this.lockSelected()));
+    row.appendChild(action("Group", "add all to the active group (G)", () => this._addToGroup()));
+    row.appendChild(action("Duplicate", "duplicate all (Ctrl+D)", () => this.duplicateSelected()));
+    row.appendChild(action("Delete", "delete all (Delete)", () => this.deleteSelected()));
+    box.appendChild(row);
   }
 
   /** Properties view for a net: rename, edit its pins, delete. Mirrors the Nets tab. */
@@ -975,12 +1012,14 @@ export class App {
 
   rotateSelected(dir = 1) {
     if (!this._guard()) return;
-    const comp = this.selected && this.project.components.get(this.selected);
-    if (!comp) return;
-    const part = LIBRARY.get(comp.part);
-    if (part && part.rotatable === false) return;
+    const comps = this._selectedComps();
+    if (!comps.length) return;
     this.snapshot();
-    comp.rot = (comp.rot + 90 * dir + 360) % 360;
+    for (const comp of comps) {
+      const part = LIBRARY.get(comp.part);
+      if (part && part.rotatable === false) continue;
+      comp.rot = (comp.rot + 90 * dir + 360) % 360;
+    }
     this._afterStructuralChange();
   }
 
@@ -990,10 +1029,11 @@ export class App {
       this.toggleFixSelected(); // L fixes/unfixes a jumper or a cut too
       return;
     }
-    const comp = this.selected && this.project.components.get(this.selected);
-    if (!comp) return;
+    const comps = this._selectedComps();
+    if (!comps.length) return;
+    const allLocked = comps.every((c) => c.locked);
     this.snapshot();
-    comp.locked = !comp.locked;
+    for (const c of comps) c.locked = !allLocked; // lock all, or unlock all
     this.render();
   }
 
@@ -1026,34 +1066,39 @@ export class App {
     return this.findFreeSpot();
   }
 
-  /** `Ctrl+D`: copy the selected part (same value/pins/span/rot and group). */
+  /** `Ctrl+D`: copy the selected part(s) — same value/pins/span/rot and group. */
   duplicateSelected() {
     if (!this._guard()) return;
-    const comp = this.selected && this.project.components.get(this.selected);
-    if (!comp) {
+    const comps = this._selectedComps();
+    if (!comps.length) {
       this._status("select a part to duplicate");
       return;
     }
-    const part = LIBRARY.get(comp.part);
-    const prefix = comp.ref.match(/^[A-Za-z]+/)?.[0] || REF_PREFIX[part?.kind] || "J";
-    const ref = this.project.uniqueRef(prefix);
-    const spot = part ? this._duplicateSpot(comp, part) : this.findFreeSpot();
     this.snapshot();
-    this.project.addComponent(new Component({
-      ref,
-      part: comp.part,
-      x: spot.x,
-      y: spot.y,
-      rot: comp.rot,
-      locked: false,
-      value: comp.value,
-      pinNames: comp.pinNames,
-      span: comp.span,
-      group: comp.group,
-    }));
-    this.selected = ref;
+    const newRefs = [];
+    for (const comp of comps) {
+      const part = LIBRARY.get(comp.part);
+      const prefix = comp.ref.match(/^[A-Za-z]+/)?.[0] || REF_PREFIX[part?.kind] || "J";
+      const ref = this.project.uniqueRef(prefix);
+      const spot = part ? this._duplicateSpot(comp, part) : this.findFreeSpot();
+      this.project.addComponent(new Component({
+        ref,
+        part: comp.part,
+        x: spot.x,
+        y: spot.y,
+        rot: comp.rot,
+        locked: false,
+        value: comp.value,
+        pinNames: comp.pinNames,
+        span: comp.span,
+        group: comp.group,
+      }));
+      newRefs.push(ref);
+    }
+    this.selection = new Set(newRefs);
+    this.selected = newRefs[0] ?? null;
     this._afterStructuralChange();
-    this._status(`duplicated ${comp.ref} → ${ref}`);
+    this._status(`duplicated ${comps.length} part(s)`);
   }
 
   deleteSelected() {
@@ -1079,7 +1124,8 @@ export class App {
       this._afterStructuralChange(false);
       return;
     }
-    if (!this.selected) {
+    const refs = this._selectedRefs();
+    if (refs.length === 0) {
       if (this.selectedNet) {
         this.snapshot();
         this.project.nets = this.project.nets.filter((n) => n.id !== this.selectedNet);
@@ -1089,7 +1135,8 @@ export class App {
       return;
     }
     this.snapshot();
-    this.project.removeComponent(this.selected);
+    for (const ref of refs) this.project.removeComponent(ref);
+    this.selection.clear();
     this.selected = null;
     this._afterStructuralChange();
   }
@@ -1178,41 +1225,43 @@ export class App {
    */
   _addToGroup() {
     if (!this._guard()) return;
-    const comp = this.selected && this.project.components.get(this.selected);
-    if (!comp) {
-      this._status("select a part first, then press G");
+    const comps = this._selectedComps();
+    if (!comps.length) {
+      this._status("select part(s) first, then press G");
       return;
     }
-    if (comp.group) {
-      this.activeGroup = comp.group;
-      this._status(`active group: "${comp.group}" — select parts and press G to add them`);
+    // A single already-grouped part just becomes the active group (for subsequent additions).
+    if (comps.length === 1 && comps[0].group) {
+      this.activeGroup = comps[0].group;
+      this._status(`active group: "${comps[0].group}" — select parts and press G to add them`);
       return;
     }
     if (!this.activeGroup) this.activeGroup = this._newGroupName();
     this.snapshot();
-    comp.group = this.activeGroup;
+    for (const comp of comps) comp.group = this.activeGroup;
     this._afterStructuralChange(false);
-    this._status(`${comp.ref} added to group "${this.activeGroup}"`);
+    this._status(`added ${comps.length} part(s) to group "${this.activeGroup}"`);
   }
 
-  /** `Shift+G`: remove the selected part from its group. */
+  /** `Shift+G`: remove the selected part(s) from their group. */
   _removeFromGroup() {
     if (!this._guard()) return;
-    const comp = this.selected && this.project.components.get(this.selected);
-    if (!comp) {
-      this._status("select a part first");
+    const comps = this._selectedComps().filter((c) => c.group);
+    if (!comps.length) {
+      this._status("no selected part is in a group");
       return;
     }
-    if (!comp.group) {
-      this._status(`${comp.ref} is not in a group`);
-      return;
-    }
-    const name = comp.group;
     this.snapshot();
-    comp.group = "";
-    if (this._groupMembers(name).length === 0 && this.activeGroup === name) this.activeGroup = null;
+    const names = new Set();
+    for (const comp of comps) {
+      names.add(comp.group);
+      comp.group = "";
+    }
+    for (const name of names) {
+      if (this._groupMembers(name).length === 0 && this.activeGroup === name) this.activeGroup = null;
+    }
     this._afterStructuralChange(false);
-    this._status(`${comp.ref} removed from group "${name}"`);
+    this._status(`removed ${comps.length} part(s) from their group`);
   }
 
   /** Cell under the pointer, or null when the click lands off the board. */
@@ -1433,6 +1482,7 @@ export class App {
         this.versions[name] = await this._computeVersion(name);
         this.active = name;
         this.selected = null;
+        this.selection.clear();
         this.selectedWire = null;
         this.selectedNet = null;
         this.render();
@@ -1442,6 +1492,7 @@ export class App {
     }
     this.active = name;
     this.selected = null;
+    this.selection.clear();
     this.selectedWire = null;
     this.selectedNet = null;
     this.render();
@@ -1502,6 +1553,7 @@ export class App {
     this.versions = emptyVersions();
     this.active = "edit";
     this.selected = null;
+    this.selection.clear();
     this.selectedWire = null;
     this.selectedNet = null;
     this.dirty = true; // the applied result is not saved until the user saves
@@ -1776,6 +1828,7 @@ ${blocks.join("\n")}
     this.active = "edit";
     this._syncSizeInputs();
     this.selected = null;
+    this.selection.clear();
     this.pending = null;
     this.jumperStart = null;
     this.solved = false;
@@ -1889,6 +1942,7 @@ ${blocks.join("\n")}
     this.versions = emptyVersions();
     this.active = "edit";
     this.selected = null;
+    this.selection.clear();
     this.pending = null;
     this.jumperStart = null;
     this.solved = false;
@@ -1993,15 +2047,65 @@ ${blocks.join("\n")}
     }
   }
 
-  _cellAt(evt) {
+  /** Pointer position in the SVG's user units (viewBox space). */
+  _svgPoint(evt) {
     const pt = this.svg.createSVGPoint();
     pt.x = evt.clientX;
     pt.y = evt.clientY;
-    const loc = pt.matrixTransform(this.svg.getScreenCTM().inverse());
+    return pt.matrixTransform(this.svg.getScreenCTM().inverse());
+  }
+
+  _cellFromPoint(loc) {
     const colIndex = Math.round((loc.x - PAD) / CELL);
     const row = Math.round((loc.y - PAD) / CELL) + 1;
     const x = this.view === "copper" ? this.project.cols - colIndex : colIndex + 1;
     return { x, y: row };
+  }
+
+  _cellAt(evt) {
+    return this._cellFromPoint(this._svgPoint(evt));
+  }
+
+  _selectedRefs() {
+    return [...this.selection];
+  }
+
+  /** Components under the current selection, in insertion order. */
+  _selectedComps() {
+    return this._selectedRefs().map((r) => this.project.components.get(r)).filter(Boolean);
+  }
+
+  _selectOnly(ref) {
+    this.selection = new Set(ref ? [ref] : []);
+    this.selected = ref || null;
+  }
+
+  _toggleSel(ref) {
+    if (this.selection.has(ref)) this.selection.delete(ref);
+    else this.selection.add(ref);
+    this.selected = this.selection.has(ref) ? ref : (this._selectedRefs()[0] ?? null);
+  }
+
+  /** Select every component whose pins/body fall inside the marquee rectangle. */
+  _selectInRect(m) {
+    const a = this._cellFromPoint({ x: m.x0, y: m.y0 });
+    const b = this._cellFromPoint({ x: m.x1, y: m.y1 });
+    const x0 = Math.min(a.x, b.x);
+    const x1 = Math.max(a.x, b.x);
+    const y0 = Math.min(a.y, b.y);
+    const y1 = Math.max(a.y, b.y);
+    const next = new Set();
+    for (const comp of this.project.components.values()) {
+      const part = LIBRARY.get(comp.part);
+      if (!part) continue;
+      const body = componentBody(comp, part);
+      const inside = body
+        ? !(body.x1 < x0 || body.x0 > x1 || body.y1 < y0 || body.y0 > y1) // rect overlap
+        : componentPins(comp, part).some((p) => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1);
+      if (inside) next.add(comp.ref);
+    }
+    this.selection = next;
+    this.selected = this._selectedRefs()[0] ?? null;
   }
 
   _bindBoard() {
@@ -2031,10 +2135,11 @@ ${blocks.join("\n")}
       // Shift+drag (or Alt+drag) a bendable part's lead to change its span. Shift is used
       // first because Alt+drag is grabbed by the window manager on Linux.
       if ((evt.shiftKey || evt.altKey) && this.mode === "select" && editing) {
+        const pinEl = evt.target.closest("[data-pin]"); // only ON a lead, not the whole body
         const el = evt.target.closest("[data-ref]");
         const comp = el && this.project.components.get(el.dataset.ref);
         const part = comp && LIBRARY.get(comp.part);
-        if (comp && part?.bendable) {
+        if (pinEl && comp && part?.bendable) {
           this.selected = comp.ref;
           this.selectedWire = null;
           this.selectedNet = null;
@@ -2099,53 +2204,70 @@ ${blocks.join("\n")}
       }
       const compEl = evt.target.closest("[data-ref]");
       if (!compEl) {
-        this.selected = null;
+        // empty board: start a rubber-band selection (a plain click clears on pointerup)
+        if (this.mode === "select" && editing && !this.schematic) {
+          const p = this._svgPoint(evt);
+          this.marquee = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, moved: false };
+          this.svg.setPointerCapture(evt.pointerId);
+          this.render();
+          return;
+        }
+        this._selectOnly(null);
         this.selectedWire = null;
         this.selectedNet = null;
         this.render();
         return;
       }
       const ref = compEl.dataset.ref;
-      const already = this.selected === ref;
-      if (!already) {
-        this.selected = ref;
-        this.selectedWire = null;
-        this.selectedNet = null;
+      this.selectedWire = null;
+      this.selectedNet = null;
+      if (evt.shiftKey) {
+        this._toggleSel(ref); // shift-click adds/removes from the selection
+        this.render();
+        return;
       }
+      if (!this.selection.has(ref)) this._selectOnly(ref);
+      else this.selected = ref; // keep a multi-selection; dragging moves it all
       const comp = this.project.components.get(ref);
-      if (this.schematic) {
-        // schematic view is read-only: click selects/toggles, never drags
-        if (already) this.selected = null;
+      if (this.schematic || !editing) {
         this.render();
         return;
       }
-      if (comp.locked || !editing) {
-        // locked, or a read-only result tab: no drag; a second click toggles selection off
-        if (already) this.selected = null;
-        this.render();
-        return;
+      // Drag the whole selection, expanded by any groups; refuse if any member is locked.
+      const memberMap = new Map();
+      for (const r of this.selection.size ? this._selectedRefs() : [ref]) {
+        const c = this.project.components.get(r);
+        if (!c) continue;
+        const mates = c.group ? this._groupMembers(c.group) : [c];
+        for (const m of mates) memberMap.set(m.ref, m);
       }
-      // A grouped part drags its whole group rigidly; a group with any locked member is fixed.
-      const mates = comp.group ? this._groupMembers(comp.group) : [comp];
-      if (comp.group && mates.some((m) => m.locked)) {
-        this._status(`group "${comp.group}" has a locked part — unlock all to move the group`);
-        if (already) this.selected = null;
+      const members = [...memberMap.values()];
+      if (members.some((m) => m.locked)) {
+        this._status("selection has a locked part — unlock it to move");
         this.render();
         return;
       }
       this.drag = {
         ref,
         start: this._cellAt(evt),
-        members: mates.map((m) => ({ comp: m, ox: m.x, oy: m.y })),
+        members: members.map((m) => ({ comp: m, ox: m.x, oy: m.y })),
         before: JSON.stringify(this.project.toJSON()),
         moved: false,
-        wasSelected: already,
+        wasOnly: this.selection.size === 1 && this.selection.has(ref),
       };
       this.svg.setPointerCapture(evt.pointerId);
       this.render();
     });
 
     this.svg.addEventListener("pointermove", (evt) => {
+      if (this.marquee) {
+        const p = this._svgPoint(evt);
+        this.marquee.x1 = p.x;
+        this.marquee.y1 = p.y;
+        this.marquee.moved = true;
+        this.render();
+        return;
+      }
       if (this.boardResize) {
         const cell = this._cellAt(evt);
         const min = this._minBoard();
@@ -2228,6 +2350,17 @@ ${blocks.join("\n")}
     });
 
     this.svg.addEventListener("pointerup", () => {
+      if (this.marquee) {
+        const m = this.marquee;
+        this.marquee = null;
+        if (!m.moved || (Math.abs(m.x1 - m.x0) < 3 && Math.abs(m.y1 - m.y0) < 3)) {
+          this._selectOnly(null); // a plain click on empty board clears the selection
+        } else {
+          this._selectInRect(m);
+        }
+        this.render();
+        return;
+      }
       if (this.boardResize) {
         const d = this.boardResize;
         this.boardResize = null;
@@ -2269,12 +2402,12 @@ ${blocks.join("\n")}
         return;
       }
       if (!this.drag) return;
-      const { before, moved, wasSelected } = this.drag;
+      const { before, moved, wasOnly } = this.drag;
       this.drag = null;
       if (!moved) {
-        // a plain click: toggle the selection back off if it was already selected
-        if (wasSelected) {
-          this.selected = null;
+        // a plain click on the sole selected part toggles it off
+        if (wasOnly) {
+          this._selectOnly(null);
           this.render();
         }
         return;
@@ -2288,6 +2421,8 @@ ${blocks.join("\n")}
     this.pending = null;
     this.jumperStart = null;
     this.activeGroup = null; // Esc also ends the "add to group" session
+    this.marquee = null;
+    this.selection.clear();
     this.selected = null;
     this.selectedWire = null;
     this.selectedNet = null;
@@ -2295,13 +2430,19 @@ ${blocks.join("\n")}
   }
 
   _nudgeSelected(evt) {
-    const comp = this.selected && this.project.components.get(this.selected);
-    if (!comp) return;
-    const dx = evt.key === "ArrowLeft" ? -1 : evt.key === "ArrowRight" ? 1 : 0;
-    const dy = evt.key === "ArrowUp" ? -1 : evt.key === "ArrowDown" ? 1 : 0;
+    const comps = this._selectedComps();
+    if (!comps.length) return;
+    let dx = evt.key === "ArrowLeft" ? -1 : evt.key === "ArrowRight" ? 1 : 0;
+    let dy = evt.key === "ArrowUp" ? -1 : evt.key === "ArrowDown" ? 1 : 0;
+    // Clamp so the whole selection stays on the board.
+    const { cols, rows } = this.project;
+    dx = Math.max(Math.max(...comps.map((c) => 1 - c.x)), Math.min(Math.min(...comps.map((c) => cols - c.x)), dx));
+    dy = Math.max(Math.max(...comps.map((c) => 1 - c.y)), Math.min(Math.min(...comps.map((c) => rows - c.y)), dy));
     this.snapshot();
-    comp.x = Math.max(1, Math.min(this.project.cols, comp.x + dx));
-    comp.y = Math.max(1, Math.min(this.project.rows, comp.y + dy));
+    for (const comp of comps) {
+      comp.x += dx;
+      comp.y += dy;
+    }
     this._afterStructuralChange();
   }
 

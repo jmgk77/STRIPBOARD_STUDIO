@@ -216,6 +216,22 @@ export function render(svg, state) {
     el("line", { x1: cx, y1: cy - k, x2: cx, y2: cy + k, stroke: sel ? C.sel : C.cut, "stroke-width": 2, "pointer-events": "none" }, g);
   }
 
+  // rubber-band selection rectangle
+  if (state.marquee) {
+    const m = state.marquee;
+    el("rect", {
+      x: Math.min(m.x0, m.x1),
+      y: Math.min(m.y0, m.y1),
+      width: Math.abs(m.x1 - m.x0),
+      height: Math.abs(m.y1 - m.y0),
+      fill: mono ? "rgba(0,0,0,0.08)" : "rgba(76,154,255,0.15)",
+      stroke: mono ? "#000000" : "#4c9aff",
+      "stroke-width": 1.5,
+      "stroke-dasharray": "5 4",
+      "pointer-events": "none",
+    }, svg);
+  }
+
   // axis labels: columns numbered along the top, rows lettered down the left (A at bottom)
   for (let x = 1; x <= cols; x++) {
     el("text", { x: sx(x), y: PAD - CELL / 2 - 7, "text-anchor": "middle", "font-size": 9, fill: C.axis, "pointer-events": "none" }, svg).textContent = colText(x);
@@ -387,7 +403,8 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
   const wiredEdge = mono ? "#000000" : "#2a9d5f";
   const textColor = mono ? "#000000" : "#101010";
   const pinColor = mono ? "#000000" : "#202020";
-  const isSel = selected === comp.ref || (state.selectedGroup != null && comp.group === state.selectedGroup);
+  const inSelection = state.selection ? state.selection.includes(comp.ref) : selected === comp.ref;
+  const isSel = inSelection || (state.selectedGroup != null && comp.group === state.selectedGroup);
   const wired = part.pins.some((p) => project.netOf(`${comp.ref}.${p.id}`));
   const pts = componentPins(comp, part).map((p) => ({ id: p.id, X: sx(p.x), Y: sy(p.y), cx: p.x, cy: p.y }));
   const body = componentBody(comp, part);
