@@ -84,6 +84,7 @@
         <button class="vtab" data-vtab="compact">Compact</button>
         <button class="vtab" data-vtab="trim">Trim</button>
         <span class="grow"></span>
+        <button id="sizeSearch" title="search board sizes (Pareto trade-offs)">Size…</button>
         <span id="tabNote" class="muted"></span>
         <button id="useThis" class="primary" style="display:none">Use this</button>
       </div>
@@ -128,6 +129,14 @@
       <label id="rowLeft">Left prefix <input id="pLeft" type="text" value="L" size="8"></label>
       <label id="rowRight">Right prefix <input id="pRight" type="text" value="R" size="8"></label>
     </div>
+  </dialog>
+  <dialog id="sizeDlg">
+    <div class="dlgbar">
+      <strong>Board size — trade-offs</strong>
+      <span class="grow"></span>
+      <button id="sizeClose">Close</button>
+    </div>
+    <div class="form" id="sizeBody">computing…</div>
   </dialog>
   <dialog id="printDlg">
     <div class="dlgbar">

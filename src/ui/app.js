@@ -4,6 +4,7 @@
 import { Component, Project, pinLabel, pinKey, splitPin } from "../core/model.js";
 import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } from "../core/library.js";
 import { analyze, safeMountCells } from "../core/connectivity.js";
+import { paretoFront } from "../core/pareto.js";
 import { route } from "../core/router.js";
 import { optimizeAsync, COMPACT_WEIGHTS, EASY_WEIGHTS } from "../core/optimize.js";
 import { componentBody, componentPins, contentBounds, mountHoleMetrics, rotateLocal, rowLabel, rowLetter } from "../core/geometry.js";
@@ -35,6 +36,26 @@ const emptyVersions = () => ({ solve: null, optimize: null, compact: null, easy:
 function shiftCell(key, dx, dy) {
   const [x, y] = key.split(",").map(Number);
   return `${x + dx},${y + dy}`;
+}
+
+// Translate everything (components, cuts, tombstones, mounting holes, jumpers) by (dx,dy) and
+// resize the board. Used by Trim and the size search; never re-routes.
+function cropTo(clone, dx, dy, cols, rows) {
+  for (const c of clone.components.values()) {
+    c.x += dx;
+    c.y += dy;
+  }
+  clone.cuts = new Set([...clone.cuts].map((k) => shiftCell(k, dx, dy)));
+  clone.fixedCuts = new Set([...clone.fixedCuts].map((k) => shiftCell(k, dx, dy)));
+  clone.removedCuts = new Set([...clone.removedCuts].map((k) => shiftCell(k, dx, dy)));
+  clone.mountingHoles = new Set([...clone.mountingHoles].map((k) => shiftCell(k, dx, dy)));
+  clone.jumpers = clone.jumpers.map((j) => ({ ...j, x: j.x + dx, ya: j.ya + dy, yb: j.yb + dy }));
+  clone.removedJumpers = new Set([...clone.removedJumpers].map((k) => {
+    const [x, ya, yb] = k.split(",").map(Number);
+    return `${x + dx},${ya + dy},${yb + dy}`;
+  }));
+  clone.cols = cols;
+  clone.rows = rows;
 }
 
 // Palette grouping (U2): each non-custom part falls into the first group whose `kinds` match.
@@ -1475,6 +1496,123 @@ export class App {
     this.switchTab("trim");
   }
 
+  // -- board-size search (F4b) --------------------------------------------------
+
+  async openSizeSearch() {
+    if (!this._guard()) return;
+    if (this._busy) {
+      this._status("busy — wait for the current computation");
+      return;
+    }
+    const body = document.getElementById("sizeBody");
+    body.textContent = "computing candidate sizes…";
+    document.getElementById("sizeDlg").showModal();
+    this._busy = true;
+    document.body.classList.add("busy");
+    try {
+      const list = await this._computeSizes((i, n, d) => {
+        body.textContent = `computing ${i}/${n}: ${d.w}x${d.h}…`;
+      });
+      this._renderSizeResults(list);
+    } catch (err) {
+      body.textContent = `failed: ${err.message}`;
+    } finally {
+      this._busy = false;
+      document.body.classList.remove("busy");
+    }
+  }
+
+  async _computeSizes(onProgress) {
+    // 1. Compact once to learn the smallest content size.
+    const compacted = this.project.clone();
+    await optimizeAsync(compacted, LIBRARY, { weights: COMPACT_WEIGHTS, maxPasses: 6, maxEvaluations: 300 });
+    const bb = contentBounds(compacted, LIBRARY) ?? { x0: 1, y0: 1, x1: this.project.cols, y1: this.project.rows };
+    const minW = Math.max(4, bb.x1 - bb.x0 + 1);
+    const minH = Math.max(4, bb.y1 - bb.y0 + 1);
+    const curW = this.project.cols;
+    const curH = this.project.rows;
+    const dims = [];
+    const push = (w, h) => {
+      const W = Math.max(4, Math.min(curW, Math.round(w)));
+      const H = Math.max(4, Math.min(curH, Math.round(h)));
+      if (!dims.some((d) => d.w === W && d.h === H)) dims.push({ w: W, h: H });
+    };
+    push(minW, minH); // smallest content
+    push(minW, curH); // narrow, full height
+    push(curW, minH); // full width, short
+    push((minW + curW) / 2, (minH + curH) / 2); // middle
+    push(curW, curH); // current size
+
+    // 2. Optimize + route each candidate, then keep the non-dominated ones.
+    const results = [];
+    for (let i = 0; i < dims.length; i++) {
+      const d = dims[i];
+      if (onProgress) onProgress(i + 1, dims.length, d);
+      const clone = compacted.clone();
+      const b = contentBounds(clone, LIBRARY);
+      if (b) cropTo(clone, 1 - b.x0, 1 - b.y0, d.w, d.h);
+      else {
+        clone.cols = d.w;
+        clone.rows = d.h;
+      }
+      await optimizeAsync(clone, LIBRARY, { maxPasses: 4, maxEvaluations: 120 }); // balanced: uses the space
+      const r = route(clone, LIBRARY);
+      clone.cuts = alignCuts(clone, LIBRARY, r.cuts, r.jumpers);
+      clone.jumpers = r.jumpers.map((j) => ({ x: j.x, ya: j.ya, yb: j.yb, net: j.net, fixed: !!j.fixed }));
+      const a = analyze(clone, LIBRARY);
+      const errors = a.issues.filter((x) => x.level === "error").length;
+      results.push({ w: d.w, h: d.h, area: d.w * d.h, jumpers: clone.jumpers.length, cuts: clone.cuts.size, errors, board: clone });
+    }
+    const feasible = results.filter((r) => r.errors === 0);
+    const front = paretoFront(feasible.length ? feasible : results, ["area", "jumpers", "cuts"]);
+    front.sort((a, b) => a.area - b.area || a.jumpers - b.jumpers);
+    return front;
+  }
+
+  _renderSizeResults(list) {
+    const body = document.getElementById("sizeBody");
+    body.innerHTML = "";
+    if (!list.length) {
+      body.textContent = "no feasible option found";
+      return;
+    }
+    const intro = document.createElement("div");
+    intro.className = "muted";
+    intro.textContent = "Non-dominated options (smaller board ↔ fewer jumpers/cuts). Click Apply.";
+    body.appendChild(intro);
+    for (const r of list) {
+      const row = document.createElement("div");
+      row.className = "pinrow";
+      const label = document.createElement("span");
+      label.className = "grow";
+      label.textContent = `${r.w}×${r.h} (${(r.w * 2.54).toFixed(1)}×${(r.h * 2.54).toFixed(1)} mm) — ${r.jumpers} jumpers, ${r.cuts} cuts`;
+      const apply = document.createElement("button");
+      apply.className = "minibtn";
+      apply.textContent = "Apply";
+      apply.addEventListener("click", () => this._applySize(r.board));
+      row.appendChild(label);
+      row.appendChild(apply);
+      body.appendChild(row);
+    }
+  }
+
+  _applySize(board) {
+    this.snapshot();
+    this.project = board.clone();
+    this.active = "edit";
+    this.versions = emptyVersions();
+    this.selected = null;
+    this.selection.clear();
+    this.selectedWire = null;
+    this.selectedNet = null;
+    this.dirty = true;
+    document.getElementById("sizeDlg").close();
+    this._syncSizeInputs();
+    this._recomputeIssues();
+    this.render();
+    this._status(`applied ${board.cols}×${board.rows} board (Ctrl+Z undoes it)`);
+  }
+
   switchTab(name) {
     if (this._busy) return; // one compute at a time
     if (name !== "edit" && !this.versions[name]) {
@@ -1506,27 +1644,7 @@ export class App {
     const clone = base.clone();
     if (name === "trim") {
       const b = contentBounds(clone, LIBRARY);
-      if (b) {
-        const dx = 1 - b.x0;
-        const dy = 1 - b.y0;
-        for (const c of clone.components.values()) {
-          c.x += dx;
-          c.y += dy;
-        }
-        // Trim crops the unused margins only: shift the existing routing, cuts and mounting
-        // holes by the same offset and never re-solve.
-        clone.cuts = new Set([...clone.cuts].map((k) => shiftCell(k, dx, dy)));
-        clone.fixedCuts = new Set([...clone.fixedCuts].map((k) => shiftCell(k, dx, dy)));
-        clone.removedCuts = new Set([...clone.removedCuts].map((k) => shiftCell(k, dx, dy)));
-        clone.mountingHoles = new Set([...clone.mountingHoles].map((k) => shiftCell(k, dx, dy)));
-        clone.jumpers = clone.jumpers.map((j) => ({ ...j, x: j.x + dx, ya: j.ya + dy, yb: j.yb + dy }));
-        clone.removedJumpers = new Set([...clone.removedJumpers].map((k) => {
-          const [x, ya, yb] = k.split(",").map(Number);
-          return `${x + dx},${ya + dy},${yb + dy}`;
-        }));
-        clone.cols = b.x1 - b.x0 + 1;
-        clone.rows = b.y1 - b.y0 + 1;
-      }
+      if (b) cropTo(clone, 1 - b.x0, 1 - b.y0, b.x1 - b.x0 + 1, b.y1 - b.y0 + 1);
       return clone;
     }
     if (name === "optimize" || name === "compact" || name === "easy") {
@@ -2035,6 +2153,8 @@ ${blocks.join("\n")}
       b.addEventListener("click", () => this.switchTab(b.dataset.vtab));
     }
     document.getElementById("useThis").addEventListener("click", () => this.useThis());
+    on("sizeSearch", () => this.openSizeSearch());
+    document.getElementById("sizeClose").addEventListener("click", () => document.getElementById("sizeDlg").close());
 
     const tabs = [...document.querySelectorAll(".tabbar .tab")];
     for (const tab of tabs) {
