@@ -78,6 +78,10 @@ test("zoom/pan updates the SVG viewBox", (t) => {
 test("tool hotkeys toggle the mode", (t) => {
   const app = makeApp(t);
   const press = (key) => dom.document.dispatch("keydown", { target: { tagName: "BODY" }, key, shiftKey: false, ctrlKey: false, metaKey: false, preventDefault() {} });
+  press("c");
+  assert.equal(app.mode, "connect");
+  press("c");
+  assert.equal(app.mode, "select");
   press("x");
   assert.equal(app.mode, "cut");
   press("x");

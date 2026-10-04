@@ -2796,7 +2796,7 @@ ${blocks.join("\n")}
       if (key === "Delete" || key === "Backspace") return this.deleteSelected();
       if (key.startsWith("Arrow")) return this._nudgeSelected(evt);
       if (lower === "v") return this.setMode("select");
-      if (lower === "c") return this.setMode("connect");
+      if (lower === "c") return this.setMode(this.mode === "connect" ? "select" : "connect");
       if (lower === "x") return this.setMode(this.mode === "cut" ? "select" : "cut");
       if (lower === "j") return this.setMode(this.mode === "jumper" ? "select" : "jumper");
       if (lower === "m") return this.setMode(this.mode === "mount" ? "select" : "mount");
