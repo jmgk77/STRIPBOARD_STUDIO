@@ -1776,6 +1776,11 @@ export class App {
     if (note) note.textContent = this.active === "edit" ? "" : "read-only";
     const bar = document.getElementById("readonlyBar");
     if (bar) bar.style.display = this.active === "edit" ? "none" : "";
+    const undo = document.getElementById("undo");
+    if (undo) undo.disabled = !this._canEdit() || this.history.length === 0;
+    const redo = document.getElementById("redo");
+    if (redo) redo.disabled = !this._canEdit() || this.redoStack.length === 0;
+    this._updateSaveState();
     const probTab = document.querySelector('.tabbar .tab[data-tab="problems"]');
     if (probTab) {
       const errors = this.issues.filter((i) => i.level === "error").length;
@@ -2094,7 +2099,15 @@ ${blocks.join("\n")}
     this.dirty = false;
     this._persistAutosave(); // record the cleared dirty flag right away
     this._rememberName(name);
+    this._updateSaveState();
     this._status(`saved ${name}.json`);
+  }
+
+  _updateSaveState() {
+    const el = document.getElementById("saveState");
+    if (!el) return;
+    el.textContent = this.dirty ? "● unsaved" : "saved";
+    el.classList.toggle("dirty", !!this.dirty);
   }
 
   save() {
@@ -2784,6 +2797,9 @@ ${blocks.join("\n")}
       if (key.startsWith("Arrow")) return this._nudgeSelected(evt);
       if (lower === "v") return this.setMode("select");
       if (lower === "c") return this.setMode("connect");
+      if (lower === "x") return this.setMode(this.mode === "cut" ? "select" : "cut");
+      if (lower === "j") return this.setMode(this.mode === "jumper" ? "select" : "jumper");
+      if (lower === "m") return this.setMode(this.mode === "mount" ? "select" : "mount");
       if (lower === "r") return this.rotateSelected(evt.shiftKey ? -1 : 1);
       if (lower === "l") return this.lockSelected();
       if (lower === "g") return evt.shiftKey ? this._removeFromGroup() : this._addToGroup();

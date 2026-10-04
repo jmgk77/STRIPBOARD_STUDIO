@@ -75,6 +75,26 @@ test("zoom/pan updates the SVG viewBox", (t) => {
   assert.equal(dom.getElementById("zoomPct").textContent, "200%");
 });
 
+test("tool hotkeys toggle the mode", (t) => {
+  const app = makeApp(t);
+  const press = (key) => dom.document.dispatch("keydown", { target: { tagName: "BODY" }, key, shiftKey: false, ctrlKey: false, metaKey: false, preventDefault() {} });
+  press("x");
+  assert.equal(app.mode, "cut");
+  press("x");
+  assert.equal(app.mode, "select");
+  press("j");
+  assert.equal(app.mode, "jumper");
+  press("m");
+  assert.equal(app.mode, "mount");
+});
+
+test("the save indicator reflects the dirty flag", (t) => {
+  const app = makeApp(t);
+  assert.equal(dom.getElementById("saveState").textContent, "saved");
+  app.addPart("header2");
+  assert.equal(dom.getElementById("saveState").textContent, "● unsaved");
+});
+
 test("undo history is capped", (t) => {
   const app = makeApp(t);
   for (let i = 0; i < 130; i++) app.pushHistory(JSON.stringify(app.project.toJSON()));

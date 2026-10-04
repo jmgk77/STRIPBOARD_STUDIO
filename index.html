@@ -29,6 +29,7 @@
     <button id="open">Open</button>
     <button id="save">Save</button>
     <button id="saveAs">Save As</button>
+    <span id="saveState" class="savestate" title="whether the board has unsaved changes"></span>
     <span class="sep"></span>
     <label>Cols <input id="cols" type="number" min="4" max="100" value="55"></label>
     <label>Rows <input id="rows" type="number" min="4" max="60" value="24"></label>
@@ -36,10 +37,10 @@
     <button id="undo">Undo</button>
     <button id="redo">Redo</button>
     <span class="sep"></span>
-    <button id="connect" class="toggle">Connect</button>
-    <button id="addCut" class="toggle">Cut</button>
-    <button id="addJumper" class="toggle">Jumper</button>
-    <button id="addMount" class="toggle">Mount</button>
+    <button id="connect" class="toggle" title="connect two pins (C)">Connect</button>
+    <button id="addCut" class="toggle" title="cut a strip (X)">Cut</button>
+    <button id="addJumper" class="toggle" title="draw a jumper (J)">Jumper</button>
+    <button id="addMount" class="toggle" title="place a mounting hole (M)">Mount</button>
     <span class="sep"></span>
     <details class="menu" id="viewMenu">
       <summary>View</summary>

@@ -161,12 +161,13 @@ export function render(svg, state) {
     const sel = selectedWire?.kind === "jumper" && selectedWire.i === i;
     const lit = sel || focusNets.has(j.net);
     const g = el("g", { "data-wire": i, class: "wire hoverable", cursor: "pointer" }, svg);
+    const net = netById.get(j.net);
+    el("title", {}, g).textContent = `jumper ${net?.label || j.net || "?"} · ${colText(j.x)}${rowText(j.ya)}-${colText(j.x2 ?? j.x)}${rowText(j.yb)}${j.fixed ? " (fixed)" : ""}`;
     el("line", { x1: x, y1, x2, y2, stroke: "transparent", "stroke-width": 16 }, g);
     if (j.fixed && !mono) el("line", { x1: x, y1, x2, y2, stroke: "#ffffff", "stroke-width": 6, "stroke-linecap": "round", opacity: 0.9 }, g);
     el("line", { x1: x, y1, x2, y2, stroke: lit ? C.sel : C.jumper, "stroke-width": sel || (mono && j.fixed) ? 4.5 : 3, "stroke-linecap": "round" }, g);
     el("circle", { cx: x, cy: y1, r: 6, fill: lit ? C.sel : C.jumper, stroke: C.jumperDark, "stroke-width": 1.5 }, g);
     el("circle", { cx: x2, cy: y2, r: 6, fill: lit ? C.sel : C.jumper, stroke: C.jumperDark, "stroke-width": 1.5 }, g);
-    const net = netById.get(j.net);
     const text = net?.label || (focusNets.has(j.net) ? net?.id : null);
     if (text) el("text", { x: (x + x2) / 2 + 8, y: (y1 + y2) / 2 + 3, "font-size": 9, fill: C.text, "pointer-events": "none" }, g).textContent = text;
   });
@@ -195,6 +196,7 @@ export function render(svg, state) {
     const r = HOLE_R + 3;
     const sel = selectedWire?.kind === "cut" && selectedWire.key === c;
     const g = el("g", { "data-cut": c, class: "cut hoverable", cursor: "pointer" }, svg);
+    el("title", {}, g).textContent = `cut at ${colText(x)}${rowText(y)}${project.fixedCuts?.has(c) ? " (fixed)" : ""}`;
     el("rect", { x: cx - r - 5, y: cy - r - 5, width: 2 * (r + 5), height: 2 * (r + 5), fill: "transparent" }, g);
     if (project.fixedCuts?.has(c) && !mono) el("circle", { cx, cy, r: r + 3, fill: "#ffffff", opacity: 0.9 }, g);
     el("line", { x1: cx - r, y1: cy - r, x2: cx + r, y2: cy + r, stroke: sel ? C.sel : C.cut, "stroke-width": sel || (mono && project.fixedCuts?.has(c)) ? 3.5 : 2.5, "stroke-linecap": "round" }, g);
@@ -209,6 +211,7 @@ export function render(svg, state) {
     const cy = sy(y);
     const sel = selectedWire?.kind === "mount" && selectedWire.key === c;
     const g = el("g", { "data-mount": c, class: "mount hoverable", cursor: "pointer" }, svg);
+    el("title", {}, g).textContent = `mounting hole Ø${project.mountDiameter ?? 3.2}mm at ${colText(x)}${rowText(y)}`;
     el("circle", { cx, cy, r: mountR + 4, fill: "transparent", "pointer-events": "all" }, g); // hit target
     el("circle", { cx, cy, r: mountR, fill: C.hole, stroke: sel ? C.sel : C.cut, "stroke-width": sel ? 3.5 : 2.5, "pointer-events": "none" }, g);
     const k = mountR * 0.72;
@@ -436,6 +439,11 @@ function drawComponent(svg, comp, part, state, sx, sy, colors) {
   // while you can still see where each part sits (and still click it).
   const ghost = state.view === "copper" && !mono;
   const g = el("g", { "data-ref": comp.ref, class: "component hoverable", cursor: "pointer", ...(ghost ? { opacity: "0.38" } : {}) }, svg);
+  const titleBits = [`${comp.ref} — ${part.label ?? comp.part}`];
+  if (comp.value) titleBits.push(`value ${comp.value}`);
+  if (comp.locked) titleBits.push("locked");
+  if (comp.group) titleBits.push(`group ${comp.group}`);
+  el("title", {}, g).textContent = titleBits.join(" · ");
   el("rect", {
     x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0, rx: 5,
     fill: isSel && wired && !mono ? "#cfe9cf" : compFill, "fill-opacity": mono ? 1 : 0.5,
