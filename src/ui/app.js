@@ -1588,9 +1588,10 @@ export class App {
     document.getElementById("sizeDlg").showModal();
     this._busy = true;
     document.body.classList.add("busy");
+    const t0 = Date.now();
     try {
       const list = await this._computeSizes((i, n, d) => {
-        body.textContent = `computing ${i}/${n}: ${d.w}x${d.h}…`;
+        body.textContent = `computing ${i}/${n}: ${d.w}x${d.h}… ${((Date.now() - t0) / 1000).toFixed(0)}s`;
       });
       this._renderSizeResults(list);
     } catch (err) {
@@ -2717,14 +2718,18 @@ ${blocks.join("\n")}
 
   /** Run a heavy synchronous task with a visible "busy" state painted first. */
   _runBusy(msg, fn) {
-    this._status(msg);
+    const t0 = Date.now();
+    const tick = () => this._status(`${msg} ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+    tick();
     this._busy = true;
     document.body.classList.add("busy");
+    const timer = setInterval(tick, 250); // live elapsed-time counter
     requestAnimationFrame(() =>
       requestAnimationFrame(async () => {
         try {
           await fn();
         } finally {
+          clearInterval(timer);
           this._busy = false;
           document.body.classList.remove("busy");
         }

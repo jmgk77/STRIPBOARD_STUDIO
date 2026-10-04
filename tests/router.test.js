@@ -58,6 +58,37 @@ test("diagonal option is opt-in and yields a valid board", () => {
   assert.equal(a.ok, true, JSON.stringify(a.issues));
 });
 
+test("diagonal routing can emit a diagonal wire (opt-in)", () => {
+  // Deterministic pseudo-random search: with diagonal enabled, at least one small board
+  // needs a slanted wire (vertical/copper cannot do it cheaper). Locks the capability.
+  let seed = 12345;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), seed / 0x7fffffff);
+  let found = false;
+  for (let t = 0; t < 80 && !found; t++) {
+    const cols = 6 + Math.floor(rnd() * 3);
+    const rows = 6 + Math.floor(rnd() * 3);
+    const p = new Project({ cols, rows });
+    const refs = [];
+    const nParts = 2 + Math.floor(rnd() * 2);
+    for (let i = 0; i < nParts; i++) {
+      const ref = `H${i}`;
+      p.addComponent(new Component({ ref, part: "header2", x: 1 + Math.floor(rnd() * (cols - 1)), y: 1 + Math.floor(rnd() * (rows - 1)) }));
+      refs.push(ref);
+    }
+    const nNets = 1 + Math.floor(rnd() * 2);
+    const nets = [];
+    for (let k = 0; k < nNets; k++) {
+      const a = refs[Math.floor(rnd() * refs.length)];
+      const b = refs[Math.floor(rnd() * refs.length)];
+      nets.push(new Net(`N${k}`, [pinKey(a, rnd() < 0.5 ? "1" : "2"), pinKey(b, rnd() < 0.5 ? "1" : "2")]));
+    }
+    p.nets = nets;
+    const r = route(p, LIBRARY, { diagonal: true });
+    if (r.jumpers.some((j) => j.x2 !== undefined && j.x2 !== j.x)) found = true;
+  }
+  assert.ok(found, "expected at least one diagonal wire in the search");
+});
+
 test("a tombstoned cut is not re-derived (delete stays deleted)", () => {
   const p = new Project({ cols: 14, rows: 10 });
   p.addComponent(new Component({ ref: "J1", part: "header4", x: 2, y: 2 })); // (2,2)..(2,5)
