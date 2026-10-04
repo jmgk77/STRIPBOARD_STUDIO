@@ -88,7 +88,12 @@
         <span id="tabNote" class="muted"></span>
         <button id="useThis" class="primary" style="display:none">Use this</button>
       </div>
-      <div id="canvasWrap"><svg id="board" xmlns="http://www.w3.org/2000/svg"></svg></div>
+      <div id="canvasWrap">
+        <div id="readonlyBar" class="readonlybar" style="display:none">
+          Read-only result — editing is disabled. Click <b>Use this</b> (top right) to copy it to the Edit board.
+        </div>
+        <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
     </div>
     <aside id="panel">
       <div class="tabbar">

@@ -1541,7 +1541,7 @@ export class App {
 
   _guard() {
     if (this._canEdit()) return true;
-    this._status("read-only result tab — click 'Use this' to edit");
+    this._status("read-only result tab — click 'Use this' (top right) to edit");
     return false;
   }
 
@@ -1758,6 +1758,8 @@ export class App {
     if (use) use.style.display = this.active === "edit" ? "none" : "";
     const note = document.getElementById("tabNote");
     if (note) note.textContent = this.active === "edit" ? "" : "read-only";
+    const bar = document.getElementById("readonlyBar");
+    if (bar) bar.style.display = this.active === "edit" ? "none" : "";
     const probTab = document.querySelector('.tabbar .tab[data-tab="problems"]');
     if (probTab) {
       const errors = this.issues.filter((i) => i.level === "error").length;
@@ -2422,6 +2424,7 @@ ${blocks.join("\n")}
       else this.selected = ref; // keep a multi-selection; dragging moves it all
       const comp = this.project.components.get(ref);
       if (this.schematic || !editing) {
+        if (!editing) this._guard(); // explain why nothing moves
         this.render();
         return;
       }
