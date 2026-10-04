@@ -3,7 +3,7 @@
 
 import { Component, Project, pinLabel, pinKey, splitPin } from "../core/model.js";
 import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } from "../core/library.js";
-import { analyze } from "../core/connectivity.js";
+import { analyze, safeMountCells } from "../core/connectivity.js";
 import { route } from "../core/router.js";
 import { optimizeAsync, COMPACT_WEIGHTS, EASY_WEIGHTS } from "../core/optimize.js";
 import { componentBody, componentPins, contentBounds, rotateLocal, rowLabel, rowLetter } from "../core/geometry.js";
@@ -48,6 +48,7 @@ export class App {
     this.solved = false;
     this.showNames = true;
     this.showConnections = false; // force the ratsnest on even after a board has routing
+    this.showMountZones = false; // hatch cells where a mounting hole would not affect any net
     this.selectedNet = null;
     this.selectedWire = null;
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
@@ -123,6 +124,7 @@ export class App {
       view: this.view,
       selected: this.selected,
       selectedGroup: (this.selected && project.components.get(this.selected)?.group) || this.activeGroup || null,
+      mountZones: this.showMountZones ? safeMountCells(project, LIBRARY) : null,
       pending: this.pending,
       jumperStart: this.jumperStart,
       mode: this.mode,
@@ -1906,6 +1908,10 @@ ${blocks.join("\n")}
     });
     document.getElementById("connections").addEventListener("change", (e) => {
       this.showConnections = e.target.checked;
+      this.render();
+    });
+    document.getElementById("mountzones").addEventListener("change", (e) => {
+      this.showMountZones = e.target.checked;
       this.render();
     });
     document.getElementById("schematic").addEventListener("change", (e) => {

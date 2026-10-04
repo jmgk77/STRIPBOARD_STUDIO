@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { Project, Component, Net, pinKey } from "../src/core/model.js";
 import { LIBRARY } from "../src/core/library.js";
-import { analyze, cellId } from "../src/core/connectivity.js";
+import { analyze, cellId, safeMountCells } from "../src/core/connectivity.js";
 
 function base() {
   const p = new Project({ cols: 12, rows: 10 });
@@ -79,6 +79,18 @@ test("a jumper under a flush body is an error", () => {
   p.jumpers = [{ x: 4, ya: 3, yb: 6 }]; // arcs through the DIP body interior (no pin there)
   const r = analyze(p, LIBRARY);
   assert.ok(r.issues.some((i) => i.code === "jumper-under-body"), JSON.stringify(r.issues));
+});
+
+test("safeMountCells: idle copper is safe, net copper between pins is not", () => {
+  const p = new Project({ cols: 12, rows: 4 });
+  p.addComponent(new Component({ ref: "J1", part: "header2", x: 2, y: 2 })); // pin (2,2)
+  p.addComponent(new Component({ ref: "J2", part: "header2", x: 8, y: 2 })); // pin (8,2)
+  p.nets = [new Net("A", [pinKey("J1", "1"), pinKey("J2", "1")])];
+  const safe = safeMountCells(p, LIBRARY);
+  assert.ok(!safe.has("5,2"), "between two net pins must be unsafe");
+  assert.ok(safe.has("10,2"), "dead-end past the last net pin is safe");
+  assert.ok(!safe.has("2,2"), "a pin cell is never safe");
+  assert.ok(safe.has("5,4"), "an unused strip is safe");
 });
 
 test("a mounting hole breaks the strip", () => {

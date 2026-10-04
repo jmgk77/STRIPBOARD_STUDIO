@@ -11,6 +11,71 @@ import { componentBody, componentPins, rowLabel } from "./geometry.js";
 import { pinKey } from "./model.js";
 
 export const cellId = (x, y) => `${x},${y}`;
+
+/** Contiguous copper runs on a row, split by cuts AND mounting holes (both break copper). */
+export function copperRuns(project, y) {
+  const mounts = project.mountingHoles ?? new Set();
+  const runs = [];
+  let start = null;
+  for (let x = 1; x <= project.cols; x++) {
+    const cell = cellId(x, y);
+    if (!project.cuts.has(cell) && !mounts.has(cell)) {
+      if (start === null) start = x;
+    } else if (start !== null) {
+      runs.push([start, x - 1]);
+      start = null;
+    }
+  }
+  if (start !== null) runs.push([start, project.cols]);
+  return runs;
+}
+
+/**
+ * Cells where drilling a mounting hole would NOT affect any net: the copper run has no
+ * net-bearing pin on both sides of the cell (cutting a dead-end or an unused strip is
+ * harmless). Cells holding a pin, a jumper end, or under a flush body are never listed.
+ */
+export function safeMountCells(project, library) {
+  const { cols, rows } = project;
+  const netPin = new Set(); // cells holding a pin that belongs to a net
+  const blocked = new Set(); // pins, jumper ends, flush-body cells
+  for (const comp of project.components.values()) {
+    const part = library.get(comp.part);
+    if (!part) continue;
+    for (const p of componentPins(comp, part)) {
+      const cell = cellId(p.x, p.y);
+      blocked.add(cell);
+      if (project.netOf(`${comp.ref}.${p.id}`)) netPin.add(cell);
+    }
+    if (part.wiresUnder === false) {
+      const b = componentBody(comp, part);
+      if (b) {
+        for (let yy = Math.max(1, b.y0); yy <= Math.min(rows, b.y1); yy++) {
+          for (let xx = Math.max(1, b.x0); xx <= Math.min(cols, b.x1); xx++) blocked.add(cellId(xx, yy));
+        }
+      }
+    }
+  }
+  for (const j of project.jumpers) {
+    blocked.add(cellId(j.x, j.ya));
+    blocked.add(cellId(j.x, j.yb));
+  }
+  const safe = new Set();
+  for (let y = 1; y <= rows; y++) {
+    for (const [a, b] of copperRuns(project, y)) {
+      const pins = [];
+      for (let x = a; x <= b; x++) if (netPin.has(cellId(x, y))) pins.push(x);
+      for (let x = a; x <= b; x++) {
+        const cell = cellId(x, y);
+        if (blocked.has(cell)) continue;
+        const left = pins.some((px) => px < x);
+        const right = pins.some((px) => px > x);
+        if (!left || !right) safe.add(cell); // cutting a dead-end / empty run is fine
+      }
+    }
+  }
+  return safe;
+}
 export const parseCell = (c) => {
   const [x, y] = c.split(",").map(Number);
   return { x, y };

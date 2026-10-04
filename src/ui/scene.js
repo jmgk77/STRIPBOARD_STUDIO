@@ -2,7 +2,7 @@
 // sets data attributes for event delegation. No application state lives here.
 
 import { componentPins, componentBody, contentBounds, rowLabel, rowLetter } from "../core/geometry.js";
-import { cellId } from "../core/connectivity.js";
+import { cellId, copperRuns } from "../core/connectivity.js";
 import { splitPin } from "../core/model.js";
 
 export const CELL = 34;
@@ -20,25 +20,6 @@ function el(tag, attrs = {}, parent = null) {
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
   if (parent) parent.appendChild(node);
   return node;
-}
-
-function runsForRow(project, y) {
-  const runs = [];
-  const mounts = project.mountingHoles ?? new Set();
-  let start = null;
-  for (let x = 1; x <= project.cols; x++) {
-    const cell = cellId(x, y);
-    // A cut OR a mounting hole breaks the copper, so runs must split at both (otherwise the
-    // net tint/highlight would show connected copper the analyzer knows is broken).
-    if (!project.cuts.has(cell) && !mounts.has(cell)) {
-      if (start === null) start = x;
-    } else if (start !== null) {
-      runs.push([start, x - 1]);
-      start = null;
-    }
-  }
-  if (start !== null) runs.push([start, project.cols]);
-  return runs;
 }
 
 export function makeMapper(state) {
@@ -108,7 +89,7 @@ export function render(svg, state) {
   // is visible as copper in the net's colour -- no jumper is needed there).
   const stripOpacity = view === "copper" ? 0.95 : 0.42;
   for (let y = 1; L.copper !== false && y <= rows; y++) {
-    for (const [a, b] of runsForRow(project, y)) {
+    for (const [a, b] of copperRuns(project, y)) {
       const nets = new Set();
       for (let x = a; x <= b; x++) {
         const id = pinNet.get(cellId(x, y));
@@ -164,6 +145,9 @@ export function render(svg, state) {
       el("circle", { cx: sx(x), cy: sy(y), r: HOLE_R, fill: C.hole, stroke: C.holeEdge, "stroke-width": 0.5 }, svg);
     }
   }
+
+  // "safe to drill" zones: cells whose copper is electrically idle (View toggle)
+  if (state.mountZones && state.mountZones.size) drawMountZones(svg, state.mountZones, sx, sy, mono);
 
   // ratsnest (intended wiring): shown while unsolved, or always when the user asks for it
   if ((!solved || state.connections === true) && L.nets !== false) drawRatsnest(svg, state, sx, sy, colors);
@@ -313,6 +297,45 @@ function drawRatsnest(svg, state, sx, sy, colors) {
         "font-size": 11, "font-weight": 700, stroke: "#fff", "stroke-width": 2.5, "paint-order": "stroke",
       }, svg).textContent = net.label || net.id;
     }
+  }
+}
+
+// A 45° hatch over the cells where a mounting hole would not affect any net.
+function drawMountZones(svg, cells, sx, sy, mono) {
+  const defs = el("defs", {}, svg);
+  const pat = el("pattern", { id: "mountHatch", width: 8, height: 8, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
+  el("line", { x1: 0, y1: 0, x2: 0, y2: 8, stroke: mono ? "#000000" : "#7ee0a2", "stroke-width": 1.6, "stroke-opacity": mono ? 0.5 : 0.6 }, pat);
+  const byRow = new Map();
+  for (const c of cells) {
+    const [x, y] = c.split(",").map(Number);
+    if (!byRow.has(y)) byRow.set(y, []);
+    byRow.get(y).push(x);
+  }
+  for (const [y, xs] of byRow) {
+    xs.sort((a, b) => a - b);
+    let start = xs[0];
+    let prev = xs[0];
+    const flush = () => {
+      const x1 = sx(start);
+      const x2 = sx(prev);
+      el("rect", {
+        x: Math.min(x1, x2) - CELL / 2,
+        y: sy(y) - CELL / 2,
+        width: Math.abs(x2 - x1) + CELL,
+        height: CELL,
+        fill: "url(#mountHatch)",
+        "pointer-events": "none",
+      }, svg);
+    };
+    for (let i = 1; i < xs.length; i++) {
+      if (xs[i] === prev + 1) prev = xs[i];
+      else {
+        flush();
+        start = xs[i];
+        prev = xs[i];
+      }
+    }
+    flush();
   }
 }
 
