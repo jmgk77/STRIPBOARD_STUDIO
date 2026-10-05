@@ -2563,7 +2563,18 @@ ${blocks.join("\n")}
     const menus = [...document.querySelectorAll("details.menu")];
     for (const m of menus) {
       m.addEventListener("toggle", () => {
-        if (m.open) for (const other of menus) if (other !== m) other.open = false;
+        if (m.open) {
+          for (const other of menus) if (other !== m) other.open = false;
+          this._positionMenu(m);
+        } else {
+          const items = m.querySelector(".menu-items");
+          if (items) {
+            items.style.position = "";
+            items.style.top = "";
+            items.style.left = "";
+            items.style.right = "";
+          }
+        }
       });
       m.addEventListener("click", (e) => {
         // Picking an action (button) closes the menu; toggling a checkbox keeps it open.
@@ -2576,6 +2587,43 @@ ${blocks.join("\n")}
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") for (const m of menus) m.open = false;
     });
+    window.addEventListener?.("resize", () => {
+      for (const m of menus) m.open = false;
+    });
+  }
+
+  /**
+   * On small screens the toolbar scrolls (`overflow-x:auto`), which would clip the absolute
+   * dropdown. Pin it under its button with `position:fixed` so it floats over the board.
+   */
+  _positionMenu(m) {
+    const items = m.querySelector(".menu-items");
+    if (!items) return;
+    const mobile = (() => {
+      try {
+        return window.matchMedia("(max-width: 980px)").matches;
+      } catch {
+        return false;
+      }
+    })();
+    if (!mobile) {
+      items.style.position = "";
+      items.style.top = "";
+      items.style.left = "";
+      items.style.right = "";
+      return;
+    }
+    const r = m.querySelector("summary").getBoundingClientRect();
+    items.style.position = "fixed";
+    items.style.right = "auto";
+    const box = items.getBoundingClientRect();
+    const w = box.width || 220;
+    const h = box.height || 0;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    let top = r.bottom + 4;
+    if (h && top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+    items.style.left = `${left}px`;
+    items.style.top = `${top}px`;
   }
 
   _bindBoard() {

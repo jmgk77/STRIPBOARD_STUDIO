@@ -111,6 +111,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   min-width: 190px;
 }
 .menu-items button { text-align: left; }
+/* The right-most menus align their dropdown to the summary's right edge (stays on screen). */
+#viewMenu .menu-items, #exportMenu .menu-items { left: auto; right: 0; }
 button.toggle.active { background: #1f6f43; border-color: #2a9d5f; }
 
 label { color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
@@ -359,4 +361,6 @@ input, select, textarea, pre { user-select: text; }
   #panel { right: 0; border-left: 1px solid var(--line); transform: translateX(102%); }
   body.show-palette #palette { transform: none; }
   body.show-panel #panel { transform: none; }
+  /* dropdowns float over the board (JS sets position:fixed); allow scrolling if tall */
+  .menu-items { max-height: 70vh; overflow: auto; }
 }
