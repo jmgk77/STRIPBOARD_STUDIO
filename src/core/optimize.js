@@ -11,8 +11,10 @@
 // creates a short or an overlap is rejected.
 
 import { analyze } from "./connectivity.js";
-import { componentPins, contentBounds, resolveSpan, totalWirelength } from "./geometry.js";
+import { componentBody, componentPins, contentBounds, resolveSpan, totalWirelength } from "./geometry.js";
 import { route } from "./router.js";
+
+const CLEARANCE = 1; // empty holes wanted between two component bodies (buildability)
 
 const ROTS = [0, 90, 180, 270];
 // One objective, three presets (master prompt §9):
@@ -20,10 +22,60 @@ const ROTS = [0, 90, 180, 270];
 //   Compact            -- strongly prefer a small board (higher spread/wire/span weights).
 //   Easy               -- strongly prefer few jumpers (wires are the fiddly part to build),
 //                         and slightly favour fewer cuts and some breathing room.
-const DEFAULT_WEIGHTS = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 2, wire: 1, span: 1 };
+// `jlen` = total routed jumper length (holes); `crowd` = summed deficit of empty space
+// between component bodies (buildability). Easy punishes long wires/crowding; Compact
+// tolerates them to shrink. Weights calibrated on fixtures (see D32).
+const DEFAULT_WEIGHTS = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 2, wire: 1, span: 1, jlen: 2, crowd: 3 };
 export const BALANCED_WEIGHTS = DEFAULT_WEIGHTS;
-export const COMPACT_WEIGHTS = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 8, wire: 4, span: 3 };
-export const EASY_WEIGHTS = { errors: 1000, diag: 200, jumpers: 22, cuts: 4, spread: 3, wire: 1, span: 1 };
+export const COMPACT_WEIGHTS = { errors: 1000, diag: 200, jumpers: 10, cuts: 3, spread: 8, wire: 4, span: 3, jlen: 1, crowd: 1 };
+export const EASY_WEIGHTS = { errors: 1000, diag: 200, jumpers: 22, cuts: 4, spread: 3, wire: 1, span: 1, jlen: 5, crowd: 8 };
+
+// Summed deficit of empty space between component bodies (ignores same-group pairs: a rigid
+// cluster's internal spacing is the user's choice, not the optimizer's).
+function crowdDeficit(project, library) {
+  const boxes = [];
+  for (const c of project.components.values()) {
+    const part = library.get(c.part);
+    if (!part) continue;
+    const b = componentBody(c, part);
+    if (b) {
+      boxes.push({ c, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 });
+      continue;
+    }
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const p of componentPins(c, part)) {
+      x0 = Math.min(x0, p.x);
+      y0 = Math.min(y0, p.y);
+      x1 = Math.max(x1, p.x);
+      y1 = Math.max(y1, p.y);
+    }
+    if (x0 !== Infinity) boxes.push({ c, x0, y0, x1, y1 });
+  }
+  let deficit = 0;
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i];
+      const b = boxes[j];
+      if (a.c.group && a.c.group === b.c.group) continue;
+      const gapX = Math.max(b.x0 - a.x1 - 1, a.x0 - b.x1 - 1, 0);
+      const gapY = Math.max(b.y0 - a.y1 - 1, a.y0 - b.y1 - 1, 0);
+      deficit += Math.max(0, CLEARANCE - Math.max(gapX, gapY));
+    }
+  }
+  return deficit;
+}
+
+// Total length of the routed jumpers, in holes (a diagonal counts its hypotenuse).
+export function jumperLength(jumpers) {
+  let sum = 0;
+  for (const j of jumpers) {
+    sum += j.x2 !== undefined && j.x2 !== j.x ? Math.hypot(j.x2 - j.x, j.yb - j.ya) : Math.abs(j.yb - j.ya);
+  }
+  return sum;
+}
 
 function pinsBounds(comps, library) {
   let x0 = Infinity;
@@ -149,6 +201,8 @@ function evaluate(project, library, cache, weights, routeOpts = {}) {
   const errors = a.issues.filter((i) => i.level === "error").length;
   const diagErrors = r.diagnostics.filter((d) => d.level === "error").length;
   const spread = b ? b.x1 - b.x0 + (b.y1 - b.y0) : 0;
+  const jlen = jumperLength(r.jumpers);
+  const crowd = crowdDeficit(project, library);
   const score =
     errors * weights.errors +
     diagErrors * weights.diag +
@@ -156,8 +210,10 @@ function evaluate(project, library, cache, weights, routeOpts = {}) {
     r.cuts.size * weights.cuts +
     spread * weights.spread +
     wire * weights.wire +
-    spanSum * weights.span;
-  const val = { score, errors, jumpers: r.jumpers.length, cuts: r.cuts.size, spread, wire, span: spanSum };
+    spanSum * weights.span +
+    jlen * weights.jlen +
+    crowd * weights.crowd;
+  const val = { score, errors, jumpers: r.jumpers.length, cuts: r.cuts.size, spread, wire, span: spanSum, jlen, crowd };
   cache.set(key, val);
   return val;
 }
@@ -300,7 +356,18 @@ function* optimizeGen(
     if (!improved) break;
   }
 
-  return { score: best.score, startScore, evaluations, components: free.length, spread: best.spread, wire: best.wire };
+  return {
+    score: best.score,
+    startScore,
+    evaluations,
+    components: free.length,
+    spread: best.spread,
+    wire: best.wire,
+    jumpers: best.jumpers,
+    cuts: best.cuts,
+    jlen: best.jlen,
+    crowd: best.crowd,
+  };
 }
 
 /** Synchronous optimize: drains the generator in one task (used by tests and headless code). */

@@ -5,7 +5,7 @@ import { Project, Component, Net, pinKey } from "../src/core/model.js";
 import { LIBRARY } from "../src/core/library.js";
 import { analyze } from "../src/core/connectivity.js";
 import { contentBounds } from "../src/core/geometry.js";
-import { optimize, optimizeAsync, EASY_WEIGHTS, COMPACT_WEIGHTS, BALANCED_WEIGHTS } from "../src/core/optimize.js";
+import { optimize, optimizeAsync, jumperLength, EASY_WEIGHTS, COMPACT_WEIGHTS, BALANCED_WEIGHTS } from "../src/core/optimize.js";
 import { route } from "../src/core/router.js";
 
 test("optimizer fixes an off-board rotated part", () => {
@@ -64,6 +64,28 @@ test("optimizeAsync (cooperative) resolves and never worsens the score", async (
   p.nets = [new Net("A", [pinKey("R1", "2"), pinKey("R2", "1")])];
   const info = await optimizeAsync(p, LIBRARY, { maxPasses: 3, maxEvaluations: 80 });
   assert.ok(info.score <= info.startScore, `${info.score} <= ${info.startScore}`);
+});
+
+test("jumperLength sums vertical and diagonal jumpers (S1)", () => {
+  assert.equal(jumperLength([{ x: 3, ya: 2, yb: 6 }]), 4);
+  assert.equal(jumperLength([{ x: 1, ya: 1, x2: 4, yb: 5 }]), 5); // hypot(3,4)
+  assert.equal(jumperLength([{ x: 3, ya: 2, yb: 6 }, { x: 1, ya: 1, x2: 4, yb: 5 }]), 9);
+});
+
+test("S1 preset weights: Easy penalises long jumpers/crowding more than Compact", () => {
+  assert.ok(EASY_WEIGHTS.jlen > BALANCED_WEIGHTS.jlen && BALANCED_WEIGHTS.jlen > COMPACT_WEIGHTS.jlen);
+  assert.ok(EASY_WEIGHTS.crowd > BALANCED_WEIGHTS.crowd && BALANCED_WEIGHTS.crowd > COMPACT_WEIGHTS.crowd);
+});
+
+test("optimize reports the S1 metrics (jlen, crowd)", () => {
+  const p = new Project({ cols: 20, rows: 14 });
+  p.addComponent(new Component({ ref: "U1", part: "dip8", x: 2, y: 5, locked: true }));
+  p.addComponent(new Component({ ref: "J1", part: "header2", x: 12, y: 3 }));
+  p.nets = [new Net("A", [pinKey("U1", "1"), pinKey("J1", "1")])];
+  const info = optimize(p, LIBRARY, { maxPasses: 2, maxEvaluations: 40 });
+  assert.equal(typeof info.jlen, "number");
+  assert.ok(info.crowd >= 0);
+  assert.ok(info.jlen >= 0);
 });
 
 test("a group moves as a rigid cluster (relative offsets preserved)", () => {
