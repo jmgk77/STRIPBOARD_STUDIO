@@ -335,3 +335,28 @@ input, select, textarea, pre { user-select: text; }
   cursor: pointer;
 }
 .chipx:hover { color: var(--error); }
+
+/* --- Responsive: tablets/phones. Above the breakpoint the desktop layout is unchanged. --- */
+.mobonly { display: none; }
+
+@media (max-width: 980px) {
+  .toolbar { flex-wrap: nowrap; overflow-x: auto; }
+  .mobonly { display: inline-flex; }
+  main { display: block; }
+  #center { height: 100%; width: 100%; }
+  .vtabbar { overflow-x: auto; }
+  #palette, #panel {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: min(86vw, 340px);
+    z-index: 60;
+    background: var(--panel);
+    transition: transform .18s ease;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, .45);
+  }
+  #palette { left: 0; border-right: 1px solid var(--line); transform: translateX(-102%); }
+  #panel { right: 0; border-left: 1px solid var(--line); transform: translateX(102%); }
+  body.show-palette #palette { transform: none; }
+  body.show-panel #panel { transform: none; }
+}

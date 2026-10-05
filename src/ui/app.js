@@ -2315,6 +2315,27 @@ ${blocks.join("\n")}
       this._paletteQuery = partSearch.value;
       this._renderPalette();
     });
+    // Mobile/tablet drawers (buttons are hidden on desktop via .mobonly).
+    const btnParts = document.getElementById("btnParts");
+    if (btnParts) {
+      btnParts.addEventListener("click", () => {
+        document.body.classList.toggle("show-palette");
+        document.body.classList.remove("show-panel");
+      });
+    }
+    const btnPanel = document.getElementById("btnPanel");
+    if (btnPanel) {
+      btnPanel.addEventListener("click", () => {
+        document.body.classList.toggle("show-panel");
+        document.body.classList.remove("show-palette");
+      });
+    }
+    const plist = document.getElementById("palette-list");
+    if (plist) {
+      plist.addEventListener("click", (e) => {
+        if (e.target.closest && e.target.closest(".pal")) document.body.classList.remove("show-palette");
+      });
+    }
     const layerIds = { "lc-parts": "parts", "lc-wires": "wires", "lc-cuts": "cuts", "lc-copper": "copper", "lc-nets": "nets", "lc-grid": "grid" };
     for (const [id, key] of Object.entries(layerIds)) {
       document.getElementById(id).addEventListener("change", (e) => {
@@ -2564,6 +2585,7 @@ ${blocks.join("\n")}
       const active = document.activeElement;
       if (active && ["INPUT", "SELECT", "TEXTAREA"].includes(active.tagName)) active.blur();
       evt.preventDefault(); // stop text selection while dragging on the board
+      document.body.classList.remove("show-palette", "show-panel"); // close mobile drawers
       const editing = this._canEdit();
       // Middle-button (or Space+left) drag pans the view instead of selecting/dragging.
       if (evt.button === 1 || (this._spaceDown && evt.button === 0)) {
@@ -2903,6 +2925,7 @@ ${blocks.join("\n")}
   }
 
   _clearSelection() {
+    document.body.classList.remove("show-palette", "show-panel"); // close mobile drawers
     this.pending = null;
     this.jumperStart = null;
     this.activeGroup = null; // Esc also ends the "add to group" session

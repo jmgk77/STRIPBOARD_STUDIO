@@ -125,6 +125,17 @@ test("theme applies to the document and persists", (t) => {
   assert.equal(globalThis.localStorage.getItem("stripboard-studio:theme"), "dark");
 });
 
+test("mobile drawers toggle (Parts / Panel buttons)", (t) => {
+  const app = makeApp(t);
+  const parts = dom.getElementById("btnParts");
+  parts.dispatch("click", { target: parts });
+  assert.ok(dom.body.classList.contains("show-palette"), "Parts opens the palette drawer");
+  const panel = dom.getElementById("btnPanel");
+  panel.dispatch("click", { target: panel });
+  assert.ok(dom.body.classList.contains("show-panel"), "Panel opens the panel drawer");
+  assert.ok(!dom.body.classList.contains("show-palette"), "opening one closes the other");
+});
+
 test("undo history is capped", (t) => {
   const app = makeApp(t);
   for (let i = 0; i < 130; i++) app.pushHistory(JSON.stringify(app.project.toJSON()));
