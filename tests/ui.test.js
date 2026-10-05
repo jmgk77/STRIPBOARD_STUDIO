@@ -136,6 +136,25 @@ test("mobile drawers toggle (Parts / Panel buttons)", (t) => {
   assert.ok(!dom.body.classList.contains("show-palette"), "opening one closes the other");
 });
 
+test("two-finger pinch zooms the board (R1b)", (t) => {
+  const app = makeApp(t);
+  app._pointers.set(1, { x: 100, y: 100 });
+  app._pointers.set(2, { x: 200, y: 100 });
+  app._startPinch();
+  const z0 = app.zoom;
+  app._pointers.set(2, { x: 300, y: 100 }); // fingers further apart
+  app._movePinch();
+  assert.ok(app.zoom > z0, `zoom ${app.zoom} > ${z0}`);
+});
+
+test("Box toggle enables the marquee mode (R1b)", (t) => {
+  const app = makeApp(t);
+  const b = dom.getElementById("boxSelect");
+  b.dispatch("click", { target: b });
+  assert.ok(dom.body.classList.contains("box-select"));
+  assert.ok(b.classList.contains("active"));
+});
+
 test("undo history is capped", (t) => {
   const app = makeApp(t);
   for (let i = 0; i < 130; i++) app.pushHistory(JSON.stringify(app.project.toJSON()));

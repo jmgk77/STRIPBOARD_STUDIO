@@ -100,6 +100,8 @@ export class App {
     this.pan = { x: 0, y: 0 }; // top-left of the visible viewBox, in board units
     this._panDrag = null;
     this._spaceDown = false;
+    this._pointers = new Map(); // active touch pointers (id -> {x,y}) for pinch/pan
+    this._pinch = null; // two-finger gesture state
     this.selectedNet = null;
     this.selectedWire = null;
     this.layers = { parts: true, wires: true, cuts: true, copper: true, nets: true, grid: true };
@@ -2330,6 +2332,13 @@ ${blocks.join("\n")}
         document.body.classList.remove("show-palette");
       });
     }
+    const boxSel = document.getElementById("boxSelect");
+    if (boxSel) {
+      boxSel.addEventListener("click", () => {
+        document.body.classList.toggle("box-select");
+        boxSel.classList.toggle("active", document.body.classList.contains("box-select"));
+      });
+    }
     const plist = document.getElementById("palette-list");
     if (plist) {
       plist.addEventListener("click", (e) => {
@@ -2407,10 +2416,45 @@ ${blocks.join("\n")}
 
   /** Pointer position in the SVG's user units (viewBox space). */
   _svgPoint(evt) {
+    return this._clientToBase(evt.clientX, evt.clientY);
+  }
+
+  _clientToBase(clientX, clientY) {
     const pt = this.svg.createSVGPoint();
-    pt.x = evt.clientX;
-    pt.y = evt.clientY;
+    pt.x = clientX;
+    pt.y = clientY;
     return pt.matrixTransform(this.svg.getScreenCTM().inverse());
+  }
+
+  _startPinch() {
+    const pts = [...this._pointers.values()];
+    if (pts.length < 2) return;
+    const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    this._pinch = {
+      startDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+      startZoom: this.zoom,
+      base: this._clientToBase(mid.x, mid.y),
+      rect: this.svg.getBoundingClientRect(),
+    };
+    this.drag = null;
+    this.marquee = null;
+    this._panDrag = null;
+  }
+
+  _movePinch() {
+    const p = this._pinch;
+    const pts = [...this._pointers.values()];
+    if (!p || pts.length < 2) return;
+    const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+    const z = Math.max(0.4, Math.min(8, p.startZoom * (dist / p.startDist)));
+    const { width, height } = this._viewBase();
+    const fx = (mid.x - p.rect.left) / (p.rect.width || 1);
+    const fy = (mid.y - p.rect.top) / (p.rect.height || 1);
+    this.zoom = z;
+    this.pan.x = p.base.x - fx * (width / z);
+    this.pan.y = p.base.y - fy * (height / z);
+    this._applyViewBox();
   }
 
   _cellFromPoint(loc) {
@@ -2635,6 +2679,14 @@ ${blocks.join("\n")}
       evt.preventDefault(); // stop text selection while dragging on the board
       document.body.classList.remove("show-palette", "show-panel"); // close mobile drawers
       const editing = this._canEdit();
+      // Touch: a second finger starts a pinch (zoom + pan) and cancels any single-finger action.
+      if (evt.pointerType === "touch") {
+        this._pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+        if (this._pointers.size >= 2) {
+          this._startPinch();
+          return;
+        }
+      }
       // Middle-button (or Space+left) drag pans the view instead of selecting/dragging.
       if (evt.button === 1 || (this._spaceDown && evt.button === 0)) {
         this._panDrag = { x: evt.clientX, y: evt.clientY };
@@ -2729,8 +2781,14 @@ ${blocks.join("\n")}
       }
       const compEl = evt.target.closest("[data-ref]");
       if (!compEl) {
-        // empty board: start a rubber-band selection (a plain click clears on pointerup)
         if (this.mode === "select" && editing && !this.schematic) {
+          // Touch: dragging the empty board PANS (unless the Box toggle asks for a marquee).
+          if (evt.pointerType === "touch" && !document.body.classList.contains("box-select")) {
+            this._panDrag = { x: evt.clientX, y: evt.clientY };
+            this.svg.setPointerCapture(evt.pointerId);
+            return;
+          }
+          // otherwise start a rubber-band selection (a plain click clears on pointerup)
           const p = this._svgPoint(evt);
           this.marquee = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, moved: false };
           this.svg.setPointerCapture(evt.pointerId);
@@ -2789,6 +2847,13 @@ ${blocks.join("\n")}
     });
 
     this.svg.addEventListener("pointermove", (evt) => {
+      if (evt.pointerType === "touch" && this._pointers.has(evt.pointerId)) {
+        this._pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+        if (this._pinch) {
+          this._movePinch();
+          return;
+        }
+      }
       if (this._panDrag) {
         const rect = this.svg.getBoundingClientRect();
         const basePerPx = this._viewBase().width / this.zoom / (rect.width || 1);
@@ -2888,7 +2953,11 @@ ${blocks.join("\n")}
       this.render();
     });
 
-    this.svg.addEventListener("pointerup", () => {
+    this.svg.addEventListener("pointerup", (evt) => {
+      if (evt && evt.pointerType === "touch") {
+        this._pointers.delete(evt.pointerId);
+        if (this._pointers.size < 2) this._pinch = null;
+      }
       if (this._panDrag) {
         this._panDrag = null;
         return;
@@ -2970,6 +3039,11 @@ ${blocks.join("\n")}
     document.getElementById("zoomIn").addEventListener("click", () => this.zoomBy(1.25));
     document.getElementById("zoomOut").addEventListener("click", () => this.zoomBy(1 / 1.25));
     document.getElementById("zoomFit").addEventListener("click", () => this.zoomFit());
+    this.svg.addEventListener("pointercancel", (evt) => {
+      this._pointers.delete(evt.pointerId);
+      if (this._pointers.size < 2) this._pinch = null;
+      this._panDrag = null;
+    });
   }
 
   _clearSelection() {

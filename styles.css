@@ -363,4 +363,11 @@ input, select, textarea, pre { user-select: text; }
   body.show-panel #panel { transform: none; }
   /* dropdowns float over the board (JS sets position:fixed); allow scrolling if tall */
   .menu-items { max-height: 70vh; overflow: auto; }
+  /* touch gestures are handled by the app (pan/pinch), so block native scroll/zoom on the board */
+  #board { touch-action: none; }
+  /* larger touch targets */
+  .toolbar button, .toolbar summary, .vtab, .tab { min-height: 40px; padding: 8px 12px; }
+  #zoomCtl button { width: 44px; height: 44px; font-size: 18px; }
+  .minibtn { min-height: 36px; padding: 6px 10px; }
+  .chipx { padding: 4px 8px; }
 }
