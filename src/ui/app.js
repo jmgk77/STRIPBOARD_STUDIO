@@ -4,6 +4,7 @@
 import { Component, Project, jumperKey, pinLabel, pinKey, splitPin } from "../core/model.js";
 import { LIBRARY, listParts, buildBarPart, registerPart, registerProjectParts } from "../core/library.js";
 import { analyze, safeMountCells } from "../core/connectivity.js";
+import { buildChecks } from "../core/checks.js";
 import { paretoFront } from "../core/pareto.js";
 import { route } from "../core/router.js";
 import { optimizeAsync, COMPACT_WEIGHTS, EASY_WEIGHTS } from "../core/optimize.js";
@@ -1861,6 +1862,7 @@ export class App {
       jumpers: want("pc-jumpers"),
       bom: want("pc-bom"),
       steps: want("pc-steps"),
+      checks: want("pc-checks"),
     };
     if (!Object.values(sections).some(Boolean)) {
       this._status(t("status.pickSection"));
@@ -1935,7 +1937,6 @@ export class App {
     const compRows = comps
       .map((c) => `${c.ref} — ${c.part}${c.value ? ` (${c.value})` : ""} — at ${cell(c.x, c.y)}${c.rot ? ` rot ${c.rot}°` : ""}`)
       .join("\n") || "(none)";
-    const netRows = project.nets.map((n) => `${n.label || n.id}: ${[...n.pins].sort().join(", ")}`).join("\n") || "(none)";
     const steps = [
       `1. Print at 100% (no 'fit to page') for true scale. Board ${cols} x ${rows} holes = ${(cols * 2.54).toFixed(1)} x ${(rows * 2.54).toFixed(1)} mm. (Scale relies on the browser print dialog; a direct vector-PDF export is not built yet.)`,
       `2. Drill the mounting holes (Ø${project.mountDiameter} mm, through the board) at: ${mountList}`,
@@ -1943,8 +1944,28 @@ export class App {
       `4. On the COPPER side, solder the jumpers: ${jumperList}`,
       `5. On the COMPONENT side, insert and solder ${comps.length} part(s), mind orientation:`,
       compRows,
-      `6. Final electrical check against the nets:`,
-      netRows,
+      `6. Run the ELECTRICAL CHECKS (next section) before applying power.`,
+    ].join("\n");
+
+    // Multimeter checks derived from the board (net continuity, isolation, cuts, jumpers, mounts).
+    const checks = buildChecks(project, LIBRARY);
+    const nl = (arr, empty) => (arr.length ? arr : [`  ${empty}`]);
+    const checksText = [
+      "Board unpowered; multimeter in continuity (beep) mode.",
+      "",
+      "NET CONTINUITY — expect a beep between the listed pins (same net):",
+      ...nl(checks.nets.map((n) => `  ${n.label}: ${n.pins.join(", ")}`), "(no net with 2+ placed pins)"),
+      "",
+      "ISOLATION — expect OPEN (no beep) between any two different nets.",
+      "",
+      "CUTS — after cutting, expect OPEN between the two neighbouring holes:",
+      ...nl(checks.cuts.map((c) => `  cut ${c.cell}: ${c.left ?? "—"} <-> ${c.right ?? "—"} open`), "(no cuts)"),
+      "",
+      "JUMPERS — after soldering, expect a beep between the two endpoints:",
+      ...nl(checks.jumpers.map((j) => `  ${j.a}-${j.b}${j.net ? ` (${j.net})` : ""}: beep`), "(no jumpers)"),
+      "",
+      `MOUNTING HOLES — Ø${project.mountDiameter} mm; verify no copper bridge (open left<->right):`,
+      ...nl(checks.mounts.map((m) => `  ${m.cell}: ${m.left ?? "—"} <-> ${m.right ?? "—"} open`), "(no mounting holes)"),
     ].join("\n");
 
     const blocks = [];
@@ -1962,6 +1983,7 @@ export class App {
     if (sections.jumpers) blocks.push(`<h3>Jumpers (${project.jumpers.length})</h3><pre>${jumperList}</pre>`);
     if (sections.bom) blocks.push(`<h3>BOM</h3><pre>${bomRows}</pre>`);
     if (sections.steps) blocks.push(`<h3>Assembly steps</h3><pre>${steps}</pre>`);
+    if (sections.checks) blocks.push(`<h3>Electrical checks (before power)</h3><pre>${checksText}</pre>`);
 
     const win = window.open("", "_blank");
     if (!win) {
